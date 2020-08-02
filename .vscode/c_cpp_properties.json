@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "intelliSenseMode": "gcc-x64",
+            "includePath": [
+                "/usr/include/c++/10",
+                "${workspaceFolder}/lib/include"
+            ],
+            "compilerPath": "/usr/bin/g++-10",
+            "compilerArgs": ["-fcoroutines"],
+            "cStandard": "c11",
+            "cppStandard": "c++20"
+        }
+    ],
+    "version": 4
+}

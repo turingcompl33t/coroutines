@@ -1,0 +1,22 @@
+{
+    "files.associations": {
+        "*.tcc": "cpp",
+        "chrono": "cpp",
+        "algorithm": "cpp",
+        "random": "cpp",
+        "memory": "cpp",
+        "optional": "cpp",
+        "functional": "cpp",
+        "array": "cpp",
+        "bit": "cpp",
+        "cwchar": "cpp",
+        "istream": "cpp",
+        "limits": "cpp",
+        "new": "cpp",
+        "ostream": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "future": "cpp"
+    }
+}
