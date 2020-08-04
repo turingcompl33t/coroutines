@@ -2,9 +2,10 @@
 // Interleaved binary search via hand-crafted state machine.
 //
 // Adapted from original code by Gor Nishanov.
+// https://github.com/GorNishanov/await/tree/master/2018_CppCon
 
-#ifndef CORO_INFRA_H
-#define CORO_INFRA_H
+#ifndef CORO_INFRA_HPP
+#define CORO_INFRA_HPP
 
 #include <cstdio>
 #include <cstdint>
@@ -284,4 +285,4 @@ void root_task::promise_type::return_void()
     owner->on_task_done();
 }
 
-#endif // CORO_INFRASTRUCTURE_H
+#endif // CORO_INFRA_HPP

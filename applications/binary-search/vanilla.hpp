@@ -1,8 +1,11 @@
 // vanilla.hpp
 // Vanilla binary search.
+//
+// Adapated from original code by Gor Nishanov.
+// https://github.com/GorNishanov/await/tree/master/2018_CppCon
 
-#ifndef VANILLA_BS_H
-#define VANILLA_BS_H
+#ifndef VANILLA_BS_HPP
+#define VANILLA_BS_HPP
 
 template <typename Iter>
 bool vanilla_binary_search(Iter first, Iter last, int val)
@@ -33,4 +36,4 @@ bool vanilla_binary_search(Iter first, Iter last, int val)
     return false;
 }
 
-#endif // VANILLA_BS_H
+#endif // VANILLA_BS_HPP

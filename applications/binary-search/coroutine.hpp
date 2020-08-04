@@ -2,9 +2,10 @@
 // Interleaved binary search via coroutines.
 //
 // Adapted from original code by Gor Nishanov.
+// https://github.com/GorNishanov/await/tree/master/2018_CppCon
 
-#ifndef COROUTINE_BS_H
-#define COROUTINE_BS_H
+#ifndef COROUTINE_BS_HPP
+#define COROUTINE_BS_HPP
 
 #include <vector>
 #include <cstdio>
@@ -93,4 +94,4 @@ long coro_multi_lookup(
     return tmp;
 }
 
-#endif // COROUTINE_BS_H
+#endif // COROUTINE_BS_HPP

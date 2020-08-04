@@ -2,9 +2,10 @@
 // Interleaved binary search via hand-crafted state machine.
 //
 // Adapted from original code by Gor Nishanov.
+// https://github.com/GorNishanov/await/tree/master/2018_CppCon
 
-#ifndef STATE_MACHINE_BS_H
-#define STATE_MACHINE_BS_H
+#ifndef STATE_MACHINE_BS_HPP
+#define STATE_MACHINE_BS_HPP
 
 #include <vector>
 #include <xmmintrin.h>
@@ -186,5 +187,5 @@ size_t state_machine_multi_lookup(
     return result;
 }
 
-#endif // STATE_MACHINE_BS_H
+#endif // STATE_MACHINE_BS_HPP
 

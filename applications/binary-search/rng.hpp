@@ -2,9 +2,10 @@
 // Random number generation utilities.
 //
 // Adapted from original code by Gor Nishanov.
+// https://github.com/GorNishanov/await/tree/master/2018_CppCon
 
-#ifndef RNG_H
-#define RNG_H
+#ifndef RNG_HPP
+#define RNG_HPP
 
 #include <random>
 
@@ -54,4 +55,4 @@ struct rng
     }
 };
 
-#endif // RNG_H
+#endif // RNG_HPP
