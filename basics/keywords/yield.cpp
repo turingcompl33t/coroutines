@@ -1,17 +1,17 @@
-// co_return.cpp
-// Introduction to co_return.
+// yield.cpp
+// Introduction to the co_yield keyword.
 
-#include <cstdlib>
-#include <iostream>
+#include <coroutine.hpp>
 
 #include <cassert>
-#include <coroutine>
+#include <cstdlib>
+#include <iostream>
 
 class resumable
 {
 public:
     struct promise_type;
-    using coro_handle = std::coroutine_handle<promise_type>;
+    using coro_handle = coro::coroutine_handle<promise_type>;
     
     resumable(coro_handle handle_) 
         : handle{handle_} {assert(handle);}
@@ -30,7 +30,7 @@ public:
         return !handle.done();
     }
 
-    char const* return_val();
+    const char* recent_val();
 
 private:
     coro_handle handle;
@@ -38,9 +38,9 @@ private:
 
 struct resumable::promise_type
 {
-    using coro_handle = std::coroutine_handle<promise_type>;
+    using coro_handle = coro::coroutine_handle<promise_type>;
 
-    char const* string;
+    char const* string = nullptr;
 
     resumable get_return_object()
     {
@@ -49,17 +49,18 @@ struct resumable::promise_type
 
     auto initial_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
-    void return_value(char const* string_)
-    {   
+    auto yield_value(char const* string_)
+    {
         string = string_;
+        return coro::suspend_always{};
     }
 
     void unhandled_exception()
@@ -68,24 +69,28 @@ struct resumable::promise_type
     }
 };
 
-char const* resumable::return_val()
+const char* resumable::recent_val()
 {
     return handle.promise().string;
 }
 
 resumable foo()
 {
-    std::cout << "foo(): enter\n";
-    co_await std::suspend_always{};
-    std::cout << "foo(): exit\n";
-    co_return "hello co_return";
+    for (;;)
+    {
+        co_yield "Hello";
+        co_yield "co_yield";
+    }
 }
 
 int main()
 {
     auto res = foo();
-    while (res.resume());
-    std::cout << res.return_val() << '\n';
+    for (size_t i = 0; i < 10; ++i)
+    {
+        res.resume();
+        std::cout << res.recent_val() << '\n';
+    }
 
     return EXIT_SUCCESS;
 }

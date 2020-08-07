@@ -1,17 +1,17 @@
-// co_yield.cpp
-// Introduction to co_yield.
+// return.cpp
+// Introduction to the co_return keyword.
 
-#include <cstdlib>
-#include <iostream>
+#include <coroutine.hpp>
 
 #include <cassert>
-#include <coroutine>
+#include <cstdlib>
+#include <iostream>
 
 class resumable
 {
 public:
     struct promise_type;
-    using coro_handle = std::coroutine_handle<promise_type>;
+    using coro_handle = coro::coroutine_handle<promise_type>;
     
     resumable(coro_handle handle_) 
         : handle{handle_} {assert(handle);}
@@ -30,7 +30,7 @@ public:
         return !handle.done();
     }
 
-    const char* recent_val();
+    char const* return_val();
 
 private:
     coro_handle handle;
@@ -38,9 +38,9 @@ private:
 
 struct resumable::promise_type
 {
-    using coro_handle = std::coroutine_handle<promise_type>;
+    using coro_handle = coro::coroutine_handle<promise_type>;
 
-    char const* string = nullptr;
+    char const* string;
 
     resumable get_return_object()
     {
@@ -49,18 +49,17 @@ struct resumable::promise_type
 
     auto initial_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
-    auto yield_value(char const* string_)
-    {
+    void return_value(char const* string_)
+    {   
         string = string_;
-        return std::suspend_always{};
     }
 
     void unhandled_exception()
@@ -69,28 +68,24 @@ struct resumable::promise_type
     }
 };
 
-const char* resumable::recent_val()
+char const* resumable::return_val()
 {
     return handle.promise().string;
 }
 
 resumable foo()
 {
-    for (;;)
-    {
-        co_yield "Hello";
-        co_yield "co_yield";
-    }
+    std::cout << "foo(): enter\n";
+    co_await coro::suspend_always{};
+    std::cout << "foo(): exit\n";
+    co_return "hello co_return";
 }
 
 int main()
 {
     auto res = foo();
-    for (size_t i = 0; i < 10; ++i)
-    {
-        res.resume();
-        std::cout << res.recent_val() << '\n';
-    }
+    while (res.resume());
+    std::cout << res.return_val() << '\n';
 
     return EXIT_SUCCESS;
 }

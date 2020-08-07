@@ -22,3 +22,6 @@ endif()
 if(NOT cxx_coroutines)
     message(FATAL_ERROR "builds in this repository require coroutines support")
 endif()
+
+add_library(coro_config INTERFACE)
+target_compile_options(coro_config INTERFACE ${CORO_OPTIONS})
