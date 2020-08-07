@@ -12,17 +12,10 @@ co_return:
 co_yield:
 	$(CC) $(CPPFLAGS) co_yield.cpp -o co_yield
 
-nested:
-	$(CC) $(CPPFLAGS) nested.cpp -o nested
-
-# counter:
-# 	$(CC) $(CPPFLAGS) counter.cpp -o counter
-
 clean:
 	rm -f *.o
 	rm -f co_await
 	rm -f co_return
 	rm -f co_yield
-	rm -f nested
-
+	
 .PHONY: clean
