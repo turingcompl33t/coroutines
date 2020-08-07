@@ -4,10 +4,22 @@
             "name": "Linux",
             "intelliSenseMode": "gcc-x64",
             "includePath": [
-                "/usr/include/c++/10"
+                "/usr/include/c++/10",
+                "${workspaceFolder}/config"
             ],
-            "compilerPath": "/usr/bin/g++-10",
+            "compilerPath": "/usr/bin/g++",
             "compilerArgs": ["-fcoroutines"],
+            "cStandard": "c11",
+            "cppStandard": "c++20"
+        },
+        {
+            "name": "Mac",
+            "intelliSenseMode": "clang-x64",
+            "includePath": [
+                "${workspaceFolder}/config"
+            ],
+            "compilerPath": "/usr/bin/clang++",
+            "compilerArgs": ["-fcoroutines-ts"],
             "cStandard": "c11",
             "cppStandard": "c++20"
         },
@@ -17,6 +29,9 @@
                 "_DEBUG",
                 "UNICODE",
                 "_UNICODE"
+            ],
+            "includePath": [
+                "${workspaceFolder}/config"
             ],
             "windowsSdkVersion": "10.0.18362.0",
             "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/Hostx64/x64/cl.exe",

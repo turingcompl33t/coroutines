@@ -6,7 +6,6 @@ project(coro-keywords CXX)
 
 include("../../cmake/set_coro_options.cmake")
 
-message(${CORO_OPTIONS})
-
 add_executable(await "co_await.cpp")
 target_compile_options(await PRIVATE ${CORO_OPTIONS})
+target_include_directories(await PRIVATE "../../config")

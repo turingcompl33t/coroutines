@@ -5,13 +5,14 @@
 #include <iostream>
 
 #include <cassert>
-#include <coroutine>
+
+#include <coroutine.hpp>
 
 class resumable
 {
 public:
     struct promise_type;
-    using coro_handle = std::coroutine_handle<promise_type>;
+    using coro_handle = coro::coroutine_handle<promise_type>;
     
     resumable(coro_handle handle_) 
         : handle{handle_} {assert(handle);}
@@ -36,7 +37,7 @@ private:
 
 struct resumable::promise_type
 {
-    using coro_handle = std::coroutine_handle<promise_type>;
+    using coro_handle = coro::coroutine_handle<promise_type>;
 
     resumable get_return_object()
     {
@@ -45,12 +46,12 @@ struct resumable::promise_type
 
     auto initial_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
     void return_void() {}
@@ -64,7 +65,7 @@ struct resumable::promise_type
 resumable foo()
 {
     std::cout << "foo(): enter\n";
-    co_await std::suspend_always{};
+    co_await coro::suspend_always{};
     std::cout << "foo() exit\n";
 }
 
