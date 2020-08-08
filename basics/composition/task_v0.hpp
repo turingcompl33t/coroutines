@@ -7,8 +7,9 @@
 // - Terminates program on unhandled exception
 
 #include <cstdio>
-#include <coroutine>
 #include <stdexcept>
+
+#include <coroutine.hpp>
 
 struct task_promise;
 struct task_awaiter;
@@ -16,7 +17,7 @@ struct task_awaiter;
 struct task
 {
     using promise_type     = task_promise;
-    using coro_handle_type = std::coroutine_handle<task_promise>;
+    using coro_handle_type = coro::coroutine_handle<task_promise>;
 
     task(coro_handle_type coro_handle_)
         : coro_handle{coro_handle_} {}
@@ -84,12 +85,12 @@ struct task_promise
 
     auto initial_suspend()
     {
-        return std::suspend_always{};
+        return coro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return std::suspend_never{};
+        return coro::suspend_always{};
     }
 
     void return_void() {}

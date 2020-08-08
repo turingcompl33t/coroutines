@@ -12,6 +12,9 @@
 // disambiguate via a nested condition or assume that if __clang__ is
 // defined then clang is the compiler that we will use for the platform
 
+#ifndef COROUTINE_CONFIG_HPP
+#define COROUTINE_CONFIG_HPP
+
 #if defined(__clang__)
     #define CORO_COMPILER_CLANG (__clang_major__ * 10000 + \
                                  __clang_minor__ * 100 + \
@@ -47,3 +50,5 @@
 #else
     namespace coro = std::experimental;
 #endif
+
+#endif // COROUTINE_CONFIG_HPP

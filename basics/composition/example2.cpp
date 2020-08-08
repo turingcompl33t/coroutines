@@ -2,11 +2,11 @@
 // Demonstration of a corrected task implementation
 // that manages continuation for coroutines.
 
-#include "task_v1.hpp"
-
 #include <cstdio>
 #include <cstdlib>
-#include <coroutine>
+#include <coroutine.hpp>
+
+#include "task_v1.hpp"
 
 #define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
 

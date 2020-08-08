@@ -1,11 +1,11 @@
 // example0.cpp
 // Basic semantics of the task type.
 
-#include "task_v0.hpp"
-
 #include <cstdio>
 #include <cstdlib>
-#include <coroutine>
+#include <coroutine.hpp>
+
+#include "task_v0.hpp"
 
 #define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
 
@@ -13,7 +13,7 @@ task async_task()
 {
     trace("enter");
 
-    co_await std::suspend_always{};
+    co_await coro::suspend_always{};
 
     trace("exit");
 
