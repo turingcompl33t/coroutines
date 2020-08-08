@@ -54,5 +54,4 @@ struct std::coroutine_traits<std::future<R>, Args...>
     using promise_type = coro::future_promise_type<R>;
 };
 
-
 #endif // CORO_FUTURE_HPP
