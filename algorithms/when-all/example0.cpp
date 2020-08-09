@@ -5,9 +5,9 @@
 #include <vector>
 #include <cstdlib>
 
-#include <config/coroutine.hpp>
+#include <stdcoro/coroutine.hpp>
 
-#include <coro/task.hpp>
+#include <libcoro/task.hpp>
 
 #include "when_all.hpp"
 #include "task_scheduler.hpp"

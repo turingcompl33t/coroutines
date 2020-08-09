@@ -8,7 +8,7 @@
 #define TASK_SCHEDULER_HPP
 
 #include <queue>
-#include <config/coroutine.hpp>
+#include <stdcoro/coroutine.hpp>
 
 class task_scheduler
 {

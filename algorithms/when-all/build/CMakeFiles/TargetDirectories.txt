@@ -1,7 +1,0 @@
-/home/kyle/dev/coroutines/algorithms/when-all/build/CMakeFiles/rebuild_cache.dir
-/home/kyle/dev/coroutines/algorithms/when-all/build/CMakeFiles/edit_cache.dir
-/home/kyle/dev/coroutines/algorithms/when-all/build/CMakeFiles/example0.dir
-/home/kyle/dev/coroutines/algorithms/when-all/build/libcoro/CMakeFiles/rebuild_cache.dir
-/home/kyle/dev/coroutines/algorithms/when-all/build/libcoro/CMakeFiles/edit_cache.dir
-/home/kyle/dev/coroutines/algorithms/when-all/build/stdcoro/CMakeFiles/rebuild_cache.dir
-/home/kyle/dev/coroutines/algorithms/when-all/build/stdcoro/CMakeFiles/edit_cache.dir

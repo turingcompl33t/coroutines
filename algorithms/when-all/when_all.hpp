@@ -7,9 +7,8 @@
 #include <vector>
 #include <utility>
 
-#include <config/coroutine.hpp>
-
-#include <coro/task.hpp>
+#include <libcoro/task.hpp>
+#include <stdcoro/coroutine.hpp>
 
 struct counter
 {
