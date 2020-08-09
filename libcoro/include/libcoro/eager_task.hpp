@@ -1,11 +1,15 @@
-// task.hpp
-// A lazily-computed asynchronous computation.
+// eager_task.hpp
+// A eagerly-computed asynchronous computation.
+// 
+// That is, exactly the same semantics as coro::task
+// except the promise type's initial_suspend() returns
+// std::suspend_never{} instead of std::suspend_always{}.
 //
 // Adapted / simplified from the implementation in CppCoro:
 // https://github.com/lewissbaker/cppcoro
 
-#ifndef CORO_TASK_HPP
-#define CORO_TASK_HPP
+#ifndef CORO_EAGER_TASK_HPP
+#define CORO_EAGER_TASK_HPP
 
 #include <atomic>
 #include <cstdio>
@@ -15,14 +19,15 @@
 #include <exception>
 #include <stdexcept>
 #include <type_traits>
+
 #include <stdcoro/coroutine.hpp>
 
 namespace coro
 {
     template <typename T>
-    class task;
+    class eager_task;
 
-    class task_promise_base
+    class eager_task_promise_base
     {
         friend struct final_awaitable;
 
@@ -41,7 +46,7 @@ namespace coro
             void await_suspend(stdcoro::coroutine_handle<Promise> coro_handle)
             {
                 // Acquire a reference to the promise for the awaiting coroutine.
-                task_promise_base& promise = coro_handle.promise();
+                eager_task_promise_base& promise = coro_handle.promise();
 
                 // Atomically update the state of the promise to `true`.
                 // An atomic exchange operation returns the previously stored
@@ -58,16 +63,12 @@ namespace coro
         };
 
     public:
-        task_promise_base() noexcept 
+        eager_task_promise_base() noexcept 
             : state{false} {}
 
         auto initial_suspend() noexcept
         {
-            // The promise type for a task unconditionally suspends at 
-            // initial_suspend() in order to perform the requested
-            // computation lazily; that is, only when the task<> is eventually
-            // awaited upon will the requested computation actually take place
-            return stdcoro::suspend_always{};
+            return stdcoro::suspend_never{};
         }
 
         auto final_suspend() noexcept
@@ -106,13 +107,13 @@ namespace coro
 
     // The promise type for tasks that return values.
     template <typename T>
-    class task_promise final 
-        : public task_promise_base
+    class eager_task_promise final 
+        : public eager_task_promise_base
     {
     public:
-        task_promise() noexcept {}
+        eager_task_promise() noexcept {}
 
-        ~task_promise()
+        ~eager_task_promise()
         {
             switch (result_type)
             {
@@ -127,7 +128,7 @@ namespace coro
             }
         }
 
-        task<T> get_return_object() noexcept;
+        eager_task<T> get_return_object() noexcept;
 
         void unhandled_exception() noexcept
         {
@@ -141,11 +142,11 @@ namespace coro
         template <
                 typename Value, 
                 typename = std::enable_if<std::is_convertible_v<Value&&, T>>>
-        void return_value(Value&& value)
+        void return_value(Value&& value_)
         {
             // Store the value returned by the coroutine in the promise object.
             ::new (static_cast<void*>(std::addressof(value))) 
-                T{std::forward<Value>(value)};
+                T{std::forward<Value>(value_)};
 
             result_type = ResultType::value;
         }
@@ -184,13 +185,13 @@ namespace coro
 
     // The promise type for tasks that do not return values.
     template <>
-    class task_promise<void> final 
-        : public task_promise_base
+    class eager_task_promise<void> final 
+        : public eager_task_promise_base
     {
     public:
-        task_promise() noexcept = default;
+        eager_task_promise() noexcept = default;
 
-        task<void> get_return_object() noexcept;
+        eager_task<void> get_return_object() noexcept;
 
         void return_void() {}
 
@@ -213,10 +214,10 @@ namespace coro
 
     // The task type.
     template <typename T = void>
-    class task
+    class eager_task
     {
     public:
-        using promise_type = task_promise<T>;
+        using promise_type = eager_task_promise<T>;
         using value_type   = T;
 
     private:
@@ -265,15 +266,15 @@ namespace coro
         };
 
     public:
-        task() noexcept
+        eager_task() noexcept
             : coro_handle{nullptr}
         {}
 
-        explicit task(stdcoro::coroutine_handle<promise_type> coro_handle_)
+        explicit eager_task(stdcoro::coroutine_handle<promise_type> coro_handle_)
             : coro_handle{coro_handle_}
         {}
 
-        ~task()
+        ~eager_task()
         {
             if (coro_handle)
             {
@@ -281,16 +282,16 @@ namespace coro
             }
         }
 
-        task(task const&)           = delete;
-        task& operator=(task const&) = delete;
+        eager_task(eager_task const&)            = delete;
+        eager_task& operator=(eager_task const&) = delete;
 
-        task(task&& t) noexcept
+        eager_task(eager_task&& t) noexcept
             : coro_handle{t.coro_handle}
         {
             t.coro_handle = nullptr;
         }
 
-        task& operator=(task&& t)
+        eager_task& operator=(eager_task&& t)
         {
             if (std::addressof(t) != this)
             {
@@ -353,15 +354,15 @@ namespace coro
     };
 
     template <typename T>
-    task<T> task_promise<T>::get_return_object() noexcept
+    eager_task<T> eager_task_promise<T>::get_return_object() noexcept
     {
-        return task<T>{stdcoro::coroutine_handle<task_promise>::from_promise(*this)};
+        return eager_task<T>{stdcoro::coroutine_handle<eager_task_promise>::from_promise(*this)};
     }
 
-    task<void> task_promise<void>::get_return_object() noexcept
+    eager_task<void> eager_task_promise<void>::get_return_object() noexcept
     {
-        return task<void>{stdcoro::coroutine_handle<task_promise>::from_promise(*this)};
+        return eager_task<void>{stdcoro::coroutine_handle<eager_task_promise>::from_promise(*this)};
     }
 }
 
-#endif // CORO_TASK_HPP
+#endif // CORO_EAGER_TASK_HPP

@@ -9,3 +9,4 @@ target_include_directories(
     ${PROJECT_NAME} 
     INTERFACE 
     $<BUILD_INTERFACE:${${PROJECT_NAME}_SOURCE_DIR}/include>)
+target_include_directories(${PROJECT_NAME} INTERFACE "../stdcoro/include")

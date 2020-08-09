@@ -5,6 +5,7 @@ cmake_minimum_required(VERSION 3.17)
 project(coro-keywords CXX)
 
 include("../../cmake/coro_config.cmake")
+include("../../cmake/compiler_warnings.cmake")
 
 add_subdirectory("../../libcoro" ${CMAKE_CURRENT_BINARY_DIR}/libcoro)
 add_subdirectory("../../stdcoro" ${CMAKE_CURRENT_BINARY_DIR}/stdcoro)
