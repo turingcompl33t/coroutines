@@ -9,9 +9,13 @@
 #include <sys/event.h>
 #include <sys/time.h>
 
-#include "unique_fd.hpp"
-#include "eager_task.hpp"
-#include "nix_system_error.hpp"
+#include <stdcoro/coroutine.hpp>
+#include <libcoro/eager_task.hpp>
+#include <libcoro/nix/unique_fd.hpp>
+#include <libcoro/nix/nix_system_error.hpp>
+
+// enable use of designated initializers
+#pragma clang diagnostic ignored "-Wc99-extensions"
 
 constexpr static auto const DEFAULT_N_REPS = 5ul;
 
@@ -19,7 +23,7 @@ class awaitable_timer
 {
     struct async_context
     {
-        coro::coroutine_handle<> awaiting_coro;
+        stdcoro::coroutine_handle<> awaiting_coro;
     };
 
     // The IO context with which this timer is associated.
@@ -61,7 +65,7 @@ public:
 
             bool await_ready() { return false; }
 
-            bool await_suspend(coro::coroutine_handle<> awaiting_coro)
+            bool await_suspend(stdcoro::coroutine_handle<> awaiting_coro)
             {
                 me.async_ctx.awaiting_coro = awaiting_coro;
                 return me.arm_timer();
@@ -91,19 +95,19 @@ private:
             .udata  = &async_ctx
         };
 
-        int const result = kevent(ioc, &ev, 1, nullptr, 0, nullptr);
+        int const result = ::kevent(ioc, &ev, 1, nullptr, 0, nullptr);
         return (result != -1);
     }
 };
 
-eager_task waiter(int ioc, unsigned long const n_reps)
+coro::eager_task<void> waiter(int ioc, unsigned long const n_reps)
 {
     using namespace std::chrono_literals;
 
     // NOTE: in a library implementation, a nicer API would
     // have the timer derive its unique identifier from the IOC;
     // can't do that here because the IOC is just an FD 
-    
+
     awaitable_timer timer{ioc, 0, 3s};
 
     for (auto i = 0ul; i < n_reps; ++i)
@@ -120,7 +124,7 @@ void reactor(int ioc, unsigned long const n_reps)
 
     for (auto i = 0ul; i < n_reps; ++i)
     {
-        int const n_events = kevent(ioc, nullptr, 0, &ev, 1, nullptr);
+        int const n_events = ::kevent(ioc, nullptr, 0, &ev, 1, nullptr);
         if (-1 == n_events)
         {
             puts("[-] kevent() error");
@@ -138,10 +142,10 @@ int main(int argc, char* argv[])
         : DEFAULT_N_REPS;
 
     // create the kqueue instance
-    auto ioc = unique_fd{::kqueue()};
+    auto ioc = coro::unique_fd{::kqueue()};
     if (!ioc)
     {
-        throw nix_system_error{};
+        throw coro::nix_system_error{};
     }
 
     // start the timer

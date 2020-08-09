@@ -10,8 +10,11 @@
 #include <sys/event.h>
 #include <sys/time.h>
 
-#include "unique_fd.hpp"
-#include "nix_system_error.hpp"
+#include <libcoro/nix/unique_fd.hpp>
+#include <libcoro/nix/nix_system_error.hpp>
+
+// enable use of designated initializers
+#pragma clang diagnostic ignored "-Wc99-extensions"
 
 constexpr static auto const DEFAULT_N_REPS = 5ul;
 
@@ -48,10 +51,10 @@ void register_timer(
         .udata  = nullptr
     };
 
-    int const result = kevent(instance, &ev, 1, nullptr, 0, nullptr);
+    int const result = ::kevent(instance, &ev, 1, nullptr, 0, nullptr);
     if (-1 == result)
     {
-        throw nix_system_error{};
+        throw coro::nix_system_error{};
     }
 }
 
@@ -67,10 +70,10 @@ void unregister_timer(int instance, uintptr_t ident)
         .udata  = nullptr
     };
 
-    int const result = kevent(instance, &ev, 1, nullptr, 0, nullptr);
+    int const result = ::kevent(instance, &ev, 1, nullptr, 0, nullptr);
     if (-1 == result)
     {
-        throw nix_system_error{};
+        throw coro::nix_system_error{};
     }
 }
 
@@ -83,7 +86,7 @@ void reactor(
 
     for (auto i = 0ul; i < n_reps; ++i)
     {
-        int const n_events = kevent(instance, nullptr, 0, &ev, 1, nullptr);
+        int const n_events = ::kevent(instance, nullptr, 0, &ev, 1, nullptr);
         if (-1 == n_events)
         {
             puts("[-] kevent() error");
@@ -108,10 +111,10 @@ int main(int argc, char* argv[])
         : DEFAULT_N_REPS;
 
     // create the kqueue instance
-    auto instance = unique_fd{::kqueue()};
+    auto instance = coro::unique_fd{::kqueue()};
     if (!instance)
     {
-        throw nix_system_error{};
+        throw coro::nix_system_error{};
     }
 
     // the identifier for our timer

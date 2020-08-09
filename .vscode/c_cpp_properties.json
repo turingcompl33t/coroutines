@@ -17,7 +17,8 @@
             "name": "Mac",
             "intelliSenseMode": "clang-x64",
             "includePath": [
-                "${workspaceFolder}/config"
+                "${workspaceFolder}/stdcoro/include",
+                "${workspaceFolder}/libcoro/include"
             ],
             "compilerPath": "/usr/bin/clang++",
             "compilerArgs": ["-fcoroutines-ts"],
