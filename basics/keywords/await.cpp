@@ -1,18 +1,19 @@
-// co_await.cpp
+// await.cpp
 // Your first coroutine.
 
-#include <cstdlib>
-#include <iostream>
-
+#include <cstdio>
 #include <cassert>
+#include <cstdlib>
+#include <stdexcept>
+#include <stdcoro/coroutine.hpp>
 
-#include <coroutine.hpp>
+#define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
 
 class resumable
 {
 public:
     struct promise_type;
-    using coro_handle = coro::coroutine_handle<promise_type>;
+    using coro_handle = stdcoro::coroutine_handle<promise_type>;
     
     resumable(coro_handle handle_) 
         : handle{handle_} {assert(handle);}
@@ -37,7 +38,7 @@ private:
 
 struct resumable::promise_type
 {
-    using coro_handle = coro::coroutine_handle<promise_type>;
+    using coro_handle = stdcoro::coroutine_handle<promise_type>;
 
     resumable get_return_object()
     {
@@ -46,12 +47,12 @@ struct resumable::promise_type
 
     auto initial_suspend()
     {
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     void return_void() {}
@@ -64,9 +65,11 @@ struct resumable::promise_type
 
 resumable foo()
 {
-    std::cout << "foo(): enter\n";
-    co_await coro::suspend_always{};
-    std::cout << "foo() exit\n";
+    trace("enter");
+
+    co_await stdcoro::suspend_always{};
+
+    trace("exit");
 }
 
 int main()

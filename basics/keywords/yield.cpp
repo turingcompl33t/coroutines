@@ -1,17 +1,19 @@
 // yield.cpp
 // Introduction to the co_yield keyword.
 
-#include <coroutine.hpp>
-
+#include <cstdio>
 #include <cassert>
 #include <cstdlib>
-#include <iostream>
+#include <stdexcept>
+#include <stdcoro/coroutine.hpp>
+
+#define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
 
 class resumable
 {
 public:
     struct promise_type;
-    using coro_handle = coro::coroutine_handle<promise_type>;
+    using coro_handle = stdcoro::coroutine_handle<promise_type>;
     
     resumable(coro_handle handle_) 
         : handle{handle_} {assert(handle);}
@@ -38,7 +40,7 @@ private:
 
 struct resumable::promise_type
 {
-    using coro_handle = coro::coroutine_handle<promise_type>;
+    using coro_handle = stdcoro::coroutine_handle<promise_type>;
 
     char const* string = nullptr;
 
@@ -49,18 +51,18 @@ struct resumable::promise_type
 
     auto initial_suspend()
     {
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     auto yield_value(char const* string_)
     {
         string = string_;
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     void unhandled_exception()
@@ -76,11 +78,16 @@ const char* resumable::recent_val()
 
 resumable foo()
 {
+    trace("enter");
+
     for (;;)
     {
         co_yield "Hello";
         co_yield "co_yield";
     }
+
+    // never reached
+    trace("exit");
 }
 
 int main()
@@ -89,7 +96,7 @@ int main()
     for (size_t i = 0; i < 10; ++i)
     {
         res.resume();
-        std::cout << res.recent_val() << '\n';
+        printf("%s\n", res.recent_val());
     }
 
     return EXIT_SUCCESS;
