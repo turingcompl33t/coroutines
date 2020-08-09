@@ -1,4 +1,4 @@
-// example0.cpp
+// example.cpp
 // Basic example usage of the when_all() algorithm.
 
 #include <cstdio>

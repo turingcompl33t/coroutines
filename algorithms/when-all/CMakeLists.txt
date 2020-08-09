@@ -9,5 +9,5 @@ include("../../cmake/coro_config.cmake")
 add_subdirectory("../../libcoro" ${CMAKE_CURRENT_BINARY_DIR}/libcoro)
 add_subdirectory("../../stdcoro" ${CMAKE_CURRENT_BINARY_DIR}/stdcoro)
 
-add_executable(example0 "example0.cpp")
-target_link_libraries(example0 PRIVATE coro_config libcoro stdcoro)
+add_executable(example "example.cpp")
+target_link_libraries(example PRIVATE coro_config libcoro stdcoro)

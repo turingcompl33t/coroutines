@@ -6,10 +6,11 @@
 // - Does not support continuations
 // - Terminates program on unhandled exception
 
-#include <cstdio>
-#include <stdexcept>
+#ifndef TASK_V0_HPP
+#define TASK_V0_HPP
 
-#include <coroutine.hpp>
+#include <stdexcept>
+#include <stdcoro/coroutine.hpp>
 
 struct task_promise;
 struct task_awaiter;
@@ -17,7 +18,7 @@ struct task_awaiter;
 struct task
 {
     using promise_type     = task_promise;
-    using coro_handle_type = coro::coroutine_handle<task_promise>;
+    using coro_handle_type = stdcoro::coroutine_handle<task_promise>;
 
     task(coro_handle_type coro_handle_)
         : coro_handle{coro_handle_} {}
@@ -85,12 +86,12 @@ struct task_promise
 
     auto initial_suspend()
     {
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     auto final_suspend()
     {
-        return coro::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     void return_void() {}
@@ -100,3 +101,5 @@ struct task_promise
         std::terminate();
     }
 };
+
+#endif // TASK_V0_HPP

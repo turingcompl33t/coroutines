@@ -3,8 +3,11 @@
 // A more fully-featured asynchronous task type:
 // - Added continuation support
 
-#include <coroutine>
+#ifndef TASK_V1_HPP
+#define TASK_V1_HPP
+
 #include <stdexcept>
+#include <stdcoro/coroutine.hpp>
 
 struct task_promise;
 struct task_awaiter;
@@ -12,7 +15,7 @@ struct task_awaiter;
 struct task
 {
     using promise_type     = task_promise;
-    using coro_handle_type = std::coroutine_handle<task_promise>;
+    using coro_handle_type = stdcoro::coroutine_handle<task_promise>;
 
     task(coro_handle_type coro_handle_)
         : coro_handle{coro_handle_} {}
@@ -56,7 +59,7 @@ struct task_promise
 
     auto initial_suspend()
     {
-        return std::suspend_always{};
+        return stdcoro::suspend_always{};
     }
 
     auto final_suspend()
@@ -120,3 +123,5 @@ task_awaiter task::operator co_await()
 {
     return task_awaiter{this->coro_handle};
 }
+
+#endif // TASK_V1_HPP

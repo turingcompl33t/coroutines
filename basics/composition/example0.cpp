@@ -3,7 +3,7 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <coroutine.hpp>
+#include <stdcoro/coroutine.hpp>
 
 #include "task_v0.hpp"
 
@@ -13,7 +13,7 @@ task async_task()
 {
     trace("enter");
 
-    co_await coro::suspend_always{};
+    co_await stdcoro::suspend_always{};
 
     trace("exit");
 
