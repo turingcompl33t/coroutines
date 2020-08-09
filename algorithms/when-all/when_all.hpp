@@ -4,6 +4,7 @@
 #define CORO_WHEN_ALL_HPP
 
 #include <vector>
+#include <utility>
 #include <coroutine.hpp>
 
 #include "task.hpp"
@@ -81,6 +82,31 @@ struct when_all_task
         }
     }
 
+    when_all_task(when_all_task const&) = delete;
+    when_all_task& operator=(when_all_task const&) = delete;
+
+    when_all_task(when_all_task&& t)
+        : coro_handle{t.coro_handle}
+    {
+        t.coro_handle = nullptr;
+    }
+
+    when_all_task& operator=(when_all_task&& t)
+    {
+        if (std::addressof(t) != this)
+        {
+            if (coro_handle)
+            {
+                coro_handle.destroy();
+            }
+
+            coro_handle   = t.coro_handle;
+            t.coro_handle = nullptr;
+        }
+
+        return *this;
+    }
+
     void start(counter& remaining_counter);
 };
 
@@ -88,7 +114,10 @@ struct when_all_task_promise
 {
     using coro_handle_type = when_all_task::coro_handle_type;
 
-    counter& remaining_counter;
+    counter* remaining_counter;
+
+    when_all_task_promise() 
+        : remaining_counter{nullptr} {}
 
     when_all_task get_return_object()
     {
@@ -117,7 +146,7 @@ struct when_all_task_promise
 
             void await_suspend(coro::coroutine_handle<when_all_task_promise>)
             {
-                me.remaining_counter.notify_task_completion();
+                me.remaining_counter->notify_task_completion();
             }
 
             void await_resume() {}
@@ -135,7 +164,7 @@ struct when_all_task_promise
 
     void start(counter& remaining_counter_)
     {
-        remaining_counter = remaining_counter_;
+        remaining_counter = &remaining_counter_;
         coro_handle_type::from_promise(*this).resume();
     }
 };
@@ -145,7 +174,7 @@ void when_all_task::start(counter& remaining_counter)
     coro_handle.promise().start(remaining_counter);
 }
 
-when_all_task make_when_all_task(task& t)
+when_all_task make_when_all_task(task t)
 {
     // make_when_all_task() serves as a sort of "intermediary coroutine"
     // between the coroutine for one of the tasks upon which we want 
@@ -157,13 +186,13 @@ when_all_task make_when_all_task(task& t)
     // in that when_all() returns a new task that itself does not
     // begin execution of its "subtasks" until it is awaited
 
-    co_await t;
+    co_await static_cast<task&&>(t);
 }
 
 struct when_all_awaiter
 {
     // The collection of tasks to complete.
-    std::vector<when_all_task>& tasks;
+    std::vector<when_all_task> tasks;
     
     // The number of tasks that remain to complete.
     counter remaining;
@@ -171,8 +200,8 @@ struct when_all_awaiter
     // Handle to the awaiting coroutine.
     coro::coroutine_handle<> continuation;
 
-    when_all_awaiter(std::vector<when_all_task>& tasks_)
-        : tasks{tasks_}
+    when_all_awaiter(std::vector<when_all_task>&& tasks_)
+        : tasks{std::move(tasks_)}
         , remaining{tasks.size()} {}
 
     bool await_ready()
@@ -199,17 +228,17 @@ struct when_all_awaiter
     }
 };
 
-when_all_awaiter when_all(std::vector<task>& input_tasks)
+when_all_awaiter when_all(std::vector<task> input_tasks)
 {
     std::vector<when_all_task> tasks{};
     tasks.reserve(input_tasks.size());
 
     for (auto& t : input_tasks)
     {
-        tasks.emplace_back(make_when_all_task(t));
+        tasks.emplace_back(make_when_all_task(std::move(t)));
     }
 
-    return when_all_awaiter{tasks};
+    return when_all_awaiter{std::move(tasks)};
 }
 
 #endif // CORO_WHEN_ALL_HPP

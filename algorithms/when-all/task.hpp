@@ -3,6 +3,7 @@
 #ifndef CORO_TASK_HPP
 #define CORO_TASK_HPP
 
+#include <utility>
 #include <stdexcept>
 #include <coroutine.hpp>
 
@@ -27,6 +28,31 @@ public:
         {
             coro_handle.destroy();
         }
+    }
+
+    task(task const&)            = delete;
+    task& operator=(task const&) = delete;
+
+    task(task&& t) 
+        : coro_handle{t.coro_handle} 
+    {
+        t.coro_handle = nullptr;
+    }
+
+    task& operator=(task&& t)
+    {
+        if (std::addressof(t) != this)
+        {
+            if (coro_handle)
+            {
+                coro_handle.destroy();
+            }
+
+            coro_handle   = t.coro_handle;
+            t.coro_handle = nullptr;
+        }
+
+        return *this;
     }
 
     task_awaiter operator co_await();

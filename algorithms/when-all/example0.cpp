@@ -1,4 +1,4 @@
-// test.cpp
+// example0.cpp
 
 #include <cstdio>
 #include <vector>
@@ -36,7 +36,7 @@ task foo()
     tasks.push_back(bar());
     tasks.push_back(baz());
 
-    co_await when_all(tasks);
+    co_await when_all(std::move(tasks));
 
     trace("exit");
 }
@@ -44,7 +44,7 @@ task foo()
 int main()
 {
     auto t = foo();
-    while (t.resume());
+    t.resume();
 
     return EXIT_SUCCESS;
 }
