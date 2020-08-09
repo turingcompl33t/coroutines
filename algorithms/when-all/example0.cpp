@@ -7,14 +7,17 @@
 
 #include "task.hpp"
 #include "when_all.hpp"
+#include "task_scheduler.hpp"
 
 #define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
+
+task_scheduler scheduler{};
 
 task baz()
 {
     trace("enter");
 
-    co_await coro::suspend_always{};
+    co_await defer_on(scheduler);
 
     trace("exit");
 }
@@ -23,7 +26,7 @@ task bar()
 {
     trace("enter");
 
-    co_await coro::suspend_always{};
+    co_await defer_on(scheduler);
 
     trace("exit");
 }
@@ -45,6 +48,8 @@ int main()
 {
     auto t = foo();
     t.resume();
+
+    scheduler.run();
 
     return EXIT_SUCCESS;
 }

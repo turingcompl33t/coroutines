@@ -3,6 +3,7 @@
 #ifndef CORO_WHEN_ALL_HPP
 #define CORO_WHEN_ALL_HPP
 
+#include <atomic>
 #include <vector>
 #include <utility>
 #include <coroutine.hpp>
@@ -12,7 +13,7 @@
 struct counter
 {
     // The number of tasks remaining to complete.
-    std::size_t count;
+    std::atomic_size_t count;
 
     // The top-level coroutine that co_awaits upon when_all().
     coro::coroutine_handle<> awaiting_coro;
@@ -42,7 +43,7 @@ struct counter
         // continuation of the original awaiter
 
         awaiting_coro = awaiting_coro_;
-        return (--count > 1);
+        return (count.fetch_sub(1, std::memory_order_acq_rel) > 1);
     }
 
     void notify_task_completion()
@@ -53,8 +54,16 @@ struct counter
         // the top-level coroutine that originally co_awaited
         // upon when_all() is resumed 
 
-        if (--count == 0)
+        if (count.fetch_sub(1, std::memory_order_acq_rel) == 1)
         {
+            // notice that while it appears there is the potential got a 
+            // race here between try_await() and notify_task_completion()
+            // because notify_task_completion() might attempt to resume 
+            // the awaiting coroutine before try_await() has the opporunity 
+            // to set the handle to a valid coroutine handle, the reference 
+            // counting semantics wherein we initialize the counter's count 
+            // to n_awaited_tasks + 1 ensures that this cannot occur
+
             awaiting_coro.resume();
         }
     }
@@ -165,12 +174,24 @@ struct when_all_task_promise
     void start(counter& remaining_counter_)
     {
         remaining_counter = &remaining_counter_;
+
+        // this resumption does not yet resume the coroutine 
+        // for the task originally passed to when_all() by
+        // the user, but instead resumes the make_when_all_task()
+        // coroutine which co_awaits on the user-provided task in
+        // order to (finally) resume the coroutine we care about
+
         coro_handle_type::from_promise(*this).resume();
     }
 };
 
 void when_all_task::start(counter& remaining_counter)
 {
+    // we defer the start() operation to the start() member
+    // of the promise type such that the promise type has the
+    // opportunity to store a reference (actually a raw pointer)
+    // to the counter so that it may notify the counter on completion
+
     coro_handle.promise().start(remaining_counter);
 }
 
@@ -179,7 +200,7 @@ when_all_task make_when_all_task(task t)
     // make_when_all_task() serves as a sort of "intermediary coroutine"
     // between the coroutine for one of the tasks upon which we want 
     // to wait and the top-level when_all_awaiter
-    //
+
     // the first time that make_when_all_task() is invoked in the
     // body of when_all(), execution suspends prior to co_awaiting
     // on the task; this preserves the laziness of the task type
@@ -189,6 +210,8 @@ when_all_task make_when_all_task(task t)
     co_await static_cast<task&&>(t);
 }
 
+// The top-level awaiter returned to the caller in which
+// the co_await when_all() statement appears
 struct when_all_awaiter
 {
     // The collection of tasks to complete.
@@ -196,9 +219,6 @@ struct when_all_awaiter
     
     // The number of tasks that remain to complete.
     counter remaining;
-
-    // Handle to the awaiting coroutine.
-    coro::coroutine_handle<> continuation;
 
     when_all_awaiter(std::vector<when_all_task>&& tasks_)
         : tasks{std::move(tasks_)}
@@ -211,7 +231,17 @@ struct when_all_awaiter
 
     bool await_suspend(coro::coroutine_handle<> awaiting_coro)
     {
-        continuation = awaiting_coro;
+        // the user has now created a when_all_awaiter via a
+        // call to when_all() and subsequently co_awaited upon
+        // the returned task; it is at this point that we need 
+        // to initiate each of the subtasks that are passed to 
+        // the algorithm
+
+        // note that, in contrast to "typical" awaiter patters, 
+        // the when_all_awaiter does not maintain a handle for 
+        // the awaiting coroutine; this is because the responsibility
+        // of resuming the awaiting coroutine is deferred to the
+        // final task in the set of tasks passed to when_all()
         
         // initiate all of the subtasks
         for (auto& t : tasks)
@@ -219,17 +249,25 @@ struct when_all_awaiter
             t.start(remaining);
         }
 
+        // it is possible that at this point all of the subtasks
+        // completed synchronously and thus that the task
+        // created by when_all() is ready; the try_await() member
+        // of the counter checks for this case, and will return 
+        // `false` here such that the coroutine does not suspend
+
         return remaining.try_await(awaiting_coro);
     }
 
-    void await_resume() 
-    {
-        continuation.resume();
-    }
+    void await_resume() {}
 };
 
 when_all_awaiter when_all(std::vector<task> input_tasks)
 {
+    // construct a new vector of when_all_task "subtasks";
+    // each of the when_all_tasks takes ownership of the 
+    // task for which it is responsible, so the input vector
+    // of tasks provided by the user is cannibalized 
+
     std::vector<when_all_task> tasks{};
     tasks.reserve(input_tasks.size());
 
