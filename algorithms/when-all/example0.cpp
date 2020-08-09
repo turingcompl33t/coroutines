@@ -1,11 +1,14 @@
 // example0.cpp
+// Basic example usage of the when_all() algorithm.
 
 #include <cstdio>
 #include <vector>
 #include <cstdlib>
-#include <coroutine.hpp>
 
-#include "task.hpp"
+#include <config/coroutine.hpp>
+
+#include <coro/task.hpp>
+
 #include "when_all.hpp"
 #include "task_scheduler.hpp"
 
@@ -13,7 +16,7 @@
 
 task_scheduler scheduler{};
 
-task baz()
+coro::task<void> baz()
 {
     trace("enter");
 
@@ -22,7 +25,7 @@ task baz()
     trace("exit");
 }
 
-task bar()
+coro::task<void> bar()
 {
     trace("enter");
 
@@ -31,11 +34,11 @@ task bar()
     trace("exit");
 }
 
-task foo()
+coro::task<void> foo()
 {   
     trace("enter");
 
-    std::vector<task> tasks{};
+    std::vector<coro::task<void>> tasks{};
     tasks.push_back(bar());
     tasks.push_back(baz());
 

@@ -6,7 +6,8 @@ project(coro-when-all CXX)
 
 include("../../cmake/coro_config.cmake")
 
+add_subdirectory("../../libcoro" ${CMAKE_CURRENT_BINARY_DIR}/libcoro)
+add_subdirectory("../../stdcoro" ${CMAKE_CURRENT_BINARY_DIR}/stdcoro)
+
 add_executable(example0 "example0.cpp")
-target_link_libraries(example0 PRIVATE coro_config)
-target_include_directories(example0 PRIVATE "../../config")
-target_compile_options(example0 PRIVATE "-ggdb")
+target_link_libraries(example0 PRIVATE coro_config libcoro stdcoro)

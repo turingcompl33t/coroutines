@@ -5,7 +5,8 @@
             "intelliSenseMode": "gcc-x64",
             "includePath": [
                 "/usr/include/c++/10",
-                "${workspaceFolder}/config"
+                "${workspaceFolder}/stdcoro/include",
+                "${workspaceFolder}/libcoro/include"
             ],
             "compilerPath": "/usr/bin/g++",
             "compilerArgs": ["-fcoroutines"],

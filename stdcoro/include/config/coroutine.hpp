@@ -1,4 +1,4 @@
-// config.hpp
+// coroutine.hpp
 //
 // Internal configuration to account for different 
 // stages of compiler support for coroutines TS.
@@ -12,8 +12,8 @@
 // disambiguate via a nested condition or assume that if __clang__ is
 // defined then clang is the compiler that we will use for the platform
 
-#ifndef COROUTINE_CONFIG_HPP
-#define COROUTINE_CONFIG_HPP
+#ifndef CONFIG_COROUTINE_CONFIG_HPP
+#define CONFIG_COROUTINE_CONFIG_HPP
 
 #if defined(__clang__)
     #define CORO_COMPILER_CLANG (__clang_major__ * 10000 + \
@@ -46,9 +46,9 @@
 
 //  namespace alias
 #if CORO_COMPILER_GCC
-    namespace coro = std;
+    namespace stdcoro = std;
 #else
-    namespace coro = std::experimental;
+    namespace stdcoro = std::experimental;
 #endif
 
-#endif // COROUTINE_CONFIG_HPP
+#endif // CONFIG_COROUTINE_CONFIG_HPP

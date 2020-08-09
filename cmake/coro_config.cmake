@@ -1,4 +1,4 @@
-# set_options.cmake
+# coro_config.cmake
 
 # Configuring the system default for gcc/g++:
 # https://askubuntu.com/questions/26498/how-to-choose-the-default-gcc-and-g-version

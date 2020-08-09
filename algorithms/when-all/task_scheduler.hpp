@@ -8,11 +8,11 @@
 #define TASK_SCHEDULER_HPP
 
 #include <queue>
-#include <coroutine.hpp>
+#include <config/coroutine.hpp>
 
 class task_scheduler
 {
-    std::queue<coro::coroutine_handle<>> tasks;
+    std::queue<stdcoro::coroutine_handle<>> tasks;
 
 public:
     task_scheduler() 
@@ -20,7 +20,7 @@ public:
 
     ~task_scheduler() = default;
 
-    void schedule(coro::coroutine_handle<> task)
+    void schedule(stdcoro::coroutine_handle<> task)
     {
         tasks.push(task);
     }
@@ -48,7 +48,7 @@ auto defer_on(task_scheduler& scheduler)
 
         bool await_ready() { return false; }
 
-        void await_suspend(coro::coroutine_handle<> awaiting_coro)
+        void await_suspend(stdcoro::coroutine_handle<> awaiting_coro)
         {
             scheduler.schedule(awaiting_coro);
         }

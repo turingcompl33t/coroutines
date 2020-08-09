@@ -1,7 +1,7 @@
 // task.hpp
-// An asynchronous computation that is computed lazily.
+// A lazily-computed asynchronous computation.
 //
-// Adapted / simplified from the implementation in CppCoro.
+// Adapted / simplified from the implementation in CppCoro:
 // https://github.com/lewissbaker/cppcoro
 
 #ifndef CORO_TASK_HPP
@@ -331,6 +331,16 @@ namespace coro
             };
 
             return awaitable{ coro_handle };
+        }
+
+        bool resume()
+        {
+            if (!coro_handle.done())
+            {
+                coro_handle.resume();
+            }
+
+            return !coro_handle.done();
         }
 
         std::coroutine_handle<promise_type> handle() const noexcept
