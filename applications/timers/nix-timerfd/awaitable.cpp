@@ -18,14 +18,14 @@
 constexpr static auto const DEFAULT_N_EXPIRATIONS = 5ul;
 
 void reactor(
-    int const           epoller, 
+    int const           ioc, 
     unsigned long const n_expirations)
 {
     struct epoll_event ev{};
 
     for (auto count = 0ul; count < n_expirations; ++count)
     {
-        int const n_events = ::epoll_wait(epoller, &ev, 1, -1);
+        int const n_events = ::epoll_wait(ioc, &ev, 1, -1);
         if (-1 == n_events)
         {
             throw coro::nix_system_error{};
@@ -52,8 +52,6 @@ coro::eager_task<void> waiter(
 
         puts("[+] timer fired");
     }
-
-    co_return;
 }
 
 int main(int argc, char* argv[])
@@ -71,8 +69,10 @@ int main(int argc, char* argv[])
         throw coro::nix_system_error{};
     }
 
+    // start the waiter task
     auto waiter_res = waiter(instance.get(), n_expirations);
 
+    // run the reactor
     reactor(instance.get(), n_expirations);
 
     return EXIT_SUCCESS;

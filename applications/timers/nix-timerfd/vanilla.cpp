@@ -30,6 +30,7 @@ void arm_timer(int timer_fd, Duration timeout)
 
     auto const secs = duration_cast<seconds>(timeout);
 
+    // non-periodic timer
     struct itimerspec spec = {
         .it_interval = { 0, 0 },
         .it_value = { secs.count(), 0 }
@@ -47,6 +48,8 @@ void on_timer_expiration(int timer_fd)
     using namespace std::chrono_literals;
 
     puts("[+] timer fired");
+
+    // re-arm the timer for next iteration
     arm_timer(timer_fd, 2s);
 }
 

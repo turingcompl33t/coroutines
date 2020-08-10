@@ -74,7 +74,7 @@ public:
         close();
     }
 
-    awaitable_timer(awaitable_timer const&) = delete;
+    awaitable_timer(awaitable_timer const&)            = delete;
     awaitable_timer& operator=(awaitable_timer const&) = delete;
 
     awaitable_timer(awaitable_timer&& at)
@@ -111,9 +111,10 @@ public:
     {
         struct awaiter
         {
-            awaitable_timer* me;
+            awaitable_timer& me;
 
-            awaiter(awaitable_timer* me_) : me{me_} {}
+            awaiter(awaitable_timer& me_) 
+                : me{me_} {}
 
             bool await_ready()
             {
@@ -122,14 +123,14 @@ public:
 
             bool await_suspend(std::coroutine_handle<> awaiting_coro)
             {
-                me->async_ctx.awaiting_coro = awaiting_coro;
-                return me->rearm();
+                me.async_ctx.awaiting_coro = awaiting_coro;
+                return me.rearm();
             }
 
             void await_resume() {}
         };
 
-        return awaiter{this};
+        return awaiter{*this};
     }
 
     static void on_timer_expire(void* ctx)
