@@ -15,12 +15,40 @@ public:
     struct promise_type;
     using coro_handle = stdcoro::coroutine_handle<promise_type>;
     
-    resumable(coro_handle handle_) 
-        : handle{handle_} {assert(handle);}
+    explicit resumable(coro_handle handle_) 
+        : handle{handle_} {}
     
     ~resumable()
     {
-        handle.destroy();
+        if (handle)
+        {
+            handle.destroy();
+        }    
+    }
+
+    resumable(resumable const&)            = delete;
+    resumable& operator=(resumable const&) = delete;
+
+    resumable(resumable&& r) 
+        : handle{r.handle}
+    {
+        r.handle = nullptr;
+    }
+
+    resumable& operator=(resumable&& r)
+    {
+        if (std::addressof(r) != this)
+        {
+            if (handle)
+            {
+                handle.destroy();
+            }
+
+            handle   = r.handle;
+            r.handle = nullptr;
+        }
+
+        return *this;
     }
 
     bool resume()
@@ -46,7 +74,7 @@ struct resumable::promise_type
 
     resumable get_return_object()
     {
-        return coro_handle::from_promise(*this);
+        return resumable{coro_handle::from_promise(*this)};
     }
 
     auto initial_suspend()
