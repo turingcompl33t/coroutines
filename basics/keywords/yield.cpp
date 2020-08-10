@@ -9,13 +9,48 @@
 
 #define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
 
+// a resumable type that supports yielding values
 class resumable
 {
 public:
-    struct promise_type;
-    using coro_handle = stdcoro::coroutine_handle<promise_type>;
+    struct promise_type
+    {
+        using coro_handle_type = stdcoro::coroutine_handle<promise_type>;
+
+        char const* string = nullptr;
+
+        resumable get_return_object()
+        {
+            return resumable{coro_handle_type::from_promise(*this)};
+        }
+
+        auto initial_suspend()
+        {
+            return stdcoro::suspend_always{};
+        }
+
+        auto final_suspend()
+        {
+            return stdcoro::suspend_always{};
+        }
+
+        auto yield_value(char const* string_)
+        {
+            string = string_;
+            return stdcoro::suspend_always{};
+        }
+
+        void return_void() {}
+
+        void unhandled_exception()
+        {
+            std::terminate();
+        }
+    };
+
+    using coro_handle_type = stdcoro::coroutine_handle<promise_type>;
     
-    explicit resumable(coro_handle handle_) 
+    explicit resumable(coro_handle_type handle_) 
         : handle{handle_} {}
     
     ~resumable()
@@ -60,49 +95,14 @@ public:
         return !handle.done();
     }
 
-    const char* recent_val();
+    const char* recent_val()
+    {
+        return handle.promise().string;
+    }
 
 private:
-    coro_handle handle;
+    coro_handle_type handle;
 };
-
-struct resumable::promise_type
-{
-    using coro_handle = stdcoro::coroutine_handle<promise_type>;
-
-    char const* string = nullptr;
-
-    resumable get_return_object()
-    {
-        return resumable{coro_handle::from_promise(*this)};
-    }
-
-    auto initial_suspend()
-    {
-        return stdcoro::suspend_always{};
-    }
-
-    auto final_suspend()
-    {
-        return stdcoro::suspend_always{};
-    }
-
-    auto yield_value(char const* string_)
-    {
-        string = string_;
-        return stdcoro::suspend_always{};
-    }
-
-    void unhandled_exception()
-    {
-        std::terminate();
-    }
-};
-
-const char* resumable::recent_val()
-{
-    return handle.promise().string;
-}
 
 resumable foo()
 {
