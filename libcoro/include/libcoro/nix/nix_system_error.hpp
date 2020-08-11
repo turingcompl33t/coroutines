@@ -1,22 +1,18 @@
-// nix_system_error.hpp
+// nix/system_error.hpp
 
 #ifndef CORO_NIX_SYSTEM_ERROR_HPP
 #define CORO_NIX_SYSTEM_ERROR_HPP
 
 #include <errno.h>
 
-namespace coro
+namespace coro::nix
 {
-    // nix_system_error
-    //
-    // A simple way to capture and propagate system-level errors.
-
-    class nix_system_error
+    class system_error
     {
         int const code;
 
     public:
-        nix_system_error(int const code_ = errno)
+        explicit system_error(int const code_ = errno)
             : code{code_} {}
         
         int get() const noexcept

@@ -1,13 +1,13 @@
-// unique_fd.hpp
+// nix/unique_fd.hpp
 // An RAII wrapper for UNIX-style file descriptors.
 
-#ifndef CORO_UNIQUE_FD_HPP
-#define CORO_UNIQUE_FD_HPP
+#ifndef CORO_NIX_UNIQUE_FD_HPP
+#define CORO_NIX_UNIQUE_FD_HPP
 
 #include <utility>
 #include <unistd.h>
 
-namespace coro
+namespace coro::nix
 {
     class unique_fd
     {
@@ -78,4 +78,4 @@ namespace coro
     };
 }
 
-#endif // CORO_UNIQUE_FD_HPP
+#endif // CORO_NIX_UNIQUE_FD_HPP

@@ -30,7 +30,8 @@
             "defines": [
                 "_DEBUG",
                 "UNICODE",
-                "_UNICODE"
+                "_UNICODE",
+                "NOMINMAX"
             ],
             "includePath": [
                 "${workspaceFolder}/stdcoro/include",
