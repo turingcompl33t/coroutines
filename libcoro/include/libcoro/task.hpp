@@ -1,5 +1,10 @@
+///////////////////////////////////////////////////////////////////////////////
+// Copyright (c) Lewis Baker
+// Licenced under MIT license. See LICENSE.txt for details.
+///////////////////////////////////////////////////////////////////////////////
+
 // task.hpp
-// A lazily-computed asynchronous computation.
+// A eagerly-computed asynchronous computation.
 //
 // Adapted / simplified from the implementation in CppCoro:
 // https://github.com/lewissbaker/cppcoro
@@ -15,6 +20,7 @@
 #include <exception>
 #include <stdexcept>
 #include <type_traits>
+
 #include <stdcoro/coroutine.hpp>
 
 namespace coro
@@ -63,11 +69,7 @@ namespace coro
 
         auto initial_suspend() noexcept
         {
-            // The promise type for a task unconditionally suspends at 
-            // initial_suspend() in order to perform the requested
-            // computation lazily; that is, only when the task<> is eventually
-            // awaited upon will the requested computation actually take place
-            return stdcoro::suspend_always{};
+            return stdcoro::suspend_never{};
         }
 
         auto final_suspend() noexcept
@@ -141,11 +143,11 @@ namespace coro
         template <
                 typename Value, 
                 typename = std::enable_if<std::is_convertible_v<Value&&, T>>>
-        void return_value(Value&& value)
+        void return_value(Value&& value_)
         {
             // Store the value returned by the coroutine in the promise object.
             ::new (static_cast<void*>(std::addressof(value))) 
-                T{std::forward<Value>(value)};
+                T{std::forward<Value>(value_)};
 
             result_type = ResultType::value;
         }
@@ -281,7 +283,7 @@ namespace coro
             }
         }
 
-        task(task const&)           = delete;
+        task(task const&)            = delete;
         task& operator=(task const&) = delete;
 
         task(task&& t) noexcept
