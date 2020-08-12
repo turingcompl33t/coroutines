@@ -11,7 +11,7 @@
 #include <sys/time.h>
 
 #include <libcoro/nix/unique_fd.hpp>
-#include <libcoro/nix/nix_system_error.hpp>
+#include <libcoro/nix/system_error.hpp>
 
 // enable use of designated initializers
 #pragma clang diagnostic ignored "-Wc99-extensions"
@@ -54,7 +54,7 @@ void register_timer(
     int const result = ::kevent(instance, &ev, 1, nullptr, 0, nullptr);
     if (-1 == result)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 }
 
@@ -73,7 +73,7 @@ void unregister_timer(int instance, uintptr_t ident)
     int const result = ::kevent(instance, &ev, 1, nullptr, 0, nullptr);
     if (-1 == result)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 }
 
@@ -111,10 +111,10 @@ int main(int argc, char* argv[])
         : DEFAULT_N_REPS;
 
     // create the kqueue instance
-    auto instance = coro::unique_fd{::kqueue()};
+    auto instance = coro::nix::unique_fd{::kqueue()};
     if (!instance)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 
     // the identifier for our timer

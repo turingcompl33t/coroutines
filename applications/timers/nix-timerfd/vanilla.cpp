@@ -36,7 +36,7 @@ void arm_timer(int timer_fd, Duration timeout)
         .it_value = { secs.count(), 0 }
     };
 
-    int const res = timerfd_settime(timer_fd, 0, &spec, nullptr);
+    int const res = ::timerfd_settime(timer_fd, 0, &spec, nullptr);
     if (-1 == res)
     {
         throw coro::nix::system_error{};
@@ -61,7 +61,7 @@ void reactor(
 
     for (auto count = 0ul; count < n_expirations; ++count)
     {
-        int const n_events = epoll_wait(epoller, &ev, 1, -1);
+        int const n_events = ::epoll_wait(epoller, &ev, 1, -1);
         if (-1 == n_events)
         {
             throw coro::nix::system_error{};
@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
     ev.events   = EPOLLIN;
     ev.data.ptr = &ctx;
     
-    if (epoll_ctl(instance.get(), EPOLL_CTL_ADD, timer.get(), &ev) == -1)
+    if (::epoll_ctl(instance.get(), EPOLL_CTL_ADD, timer.get(), &ev) == -1)
     {
         throw coro::nix::system_error{};
     }

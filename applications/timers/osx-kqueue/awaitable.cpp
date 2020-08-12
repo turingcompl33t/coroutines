@@ -12,7 +12,7 @@
 #include <stdcoro/coroutine.hpp>
 #include <libcoro/eager_task.hpp>
 #include <libcoro/nix/unique_fd.hpp>
-#include <libcoro/nix/nix_system_error.hpp>
+#include <libcoro/nix/system_error.hpp>
 
 #include "awaitable_timer.hpp"
 
@@ -60,10 +60,10 @@ int main(int argc, char* argv[])
         : DEFAULT_N_REPS;
 
     // create the kqueue instance
-    auto ioc = coro::unique_fd{::kqueue()};
+    auto ioc = coro::nix::unique_fd{::kqueue()};
     if (!ioc)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 
     // start the timer
