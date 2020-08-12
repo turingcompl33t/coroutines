@@ -1,4 +1,9 @@
 // timer_service.cpp
+// An IO service that supports efficient management of awaitable timers.
+// 
+// The internal implementation for the timer thread is adapted from 
+// the io_service timer management implementation from cppcoro:
+// https://github.com/lewissbaker/cppcoro
 
 #include "timer_service.hpp"
 
@@ -30,6 +35,7 @@ void due_time_to_relative_filetime(
 
 timer_queue::timer_queue() : timers{} {}
 
+// Push a new timer onto the timer queue.
 void timer_queue::push_new_timer(service_awaiter* awaiter)
 {
     auto const due_time = awaiter->due_time;
@@ -38,6 +44,7 @@ void timer_queue::push_new_timer(service_awaiter* awaiter)
     std::push_heap(timers.begin(), timers.end(), due_time_comparator);
 }
 
+// Remove all due times from the timer queue onto the output list. 
 void timer_queue::pop_due_timers(
     time_point_t      now, 
     service_awaiter*& awaiters)
@@ -59,6 +66,20 @@ timer_queue::time_point_t timer_queue::earliest_due_time()
     return timers.empty() 
         ? time_point_t::max() 
         : timers.front().due_time;
+}
+
+service_awaiter* timer_queue::pop_any()
+{
+    if (timers.empty())
+    {
+        return nullptr;
+    }
+    else
+    {
+        auto* awaiter = timers.back().awaiter;
+        timers.pop_back();
+        return awaiter;
+    }
 }
 
 bool timer_queue::is_empty() const noexcept
@@ -84,23 +105,28 @@ timer_service::timer_service()
 
 timer_service::timer_service(unsigned int const max_threads)
     : port{::CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, max_threads)} 
-    , timer_thread{::CreateThread(nullptr, 0, timer_thread_main, nullptr, 0, nullptr)}
+    , timer_thread{}
     , wake_event{::CreateEventW(nullptr, FALSE, FALSE, nullptr)}
     , expiration_event{::CreateWaitableTimerW(nullptr, TRUE, nullptr)}
     , active_timers{}
     , new_awaiters{nullptr}
 {
     // ensure all of our OS resources initialized correctly
-    if (!port || !timer_thread || !wake_event || !expiration_event)
+    if (!port || !wake_event || !expiration_event)
+    {
+        throw coro::win::system_error{};
+    }
+
+    // need to ensure that both wake event and expiration event are successfully
+    // created prior to launch of the timer thread in order to avoid race
+    timer_thread.reset(
+        ::CreateThread(nullptr, 0, timer_thread_main, this, 0, nullptr));
+
+    if (!timer_thread)
     {
         throw coro::win::system_error{};
     }
 }
-
-timer_service::~timer_service()
-{
-
-}   
 
 void timer_service::run()
 {
@@ -187,7 +213,7 @@ unsigned long __stdcall timer_service::timer_thread_main(void* arg)
 
     time_point_t last_set_waitable_timer = time_point_t::max();
 
-    while ((service.service_state.load(std::memory_order_relaxed) & CLOSED_FLAG) == 0)
+    while (!service.is_closed())
     {
         // wait on expiration of the earliest due time and
         // any wake events which result from two conditions:
@@ -216,39 +242,30 @@ unsigned long __stdcall timer_service::timer_thread_main(void* arg)
                 new_timer = timer->next;
                 service.active_timers.push_new_timer(timer);
             }
-
         }
         else if (event_index == expire_ev_idx)
         {
-            // earliest due timer became due
+            // earliest due timer became due; we set this placeholder here to 
+            // handle the case in which we pop all timers from the active timers 
+            // queue and then don't subsequently reset the awaitable timer; 
+            // it serves as a sort of sentinel value for the last set time
             last_set_waitable_timer = time_point_t::max();
         }
 
-        // reset the waitable timer, if necessary
         if (!service.active_timers.is_empty())
         {
             time_point_t const now = clock::now();
+
+            // dequeue due timers, if any, onto temporary list of ready awaiters
             service.active_timers.pop_due_timers(now, ready_awaiters);
             
-            if (!service.active_timers.is_empty())
-            {
-                // need to reset the awaitable timer to next earliest due time
-                auto const earliest_due_time = service.active_timers.earliest_due_time();
-                if (earliest_due_time != last_set_waitable_timer)
-                {
-                    LARGE_INTEGER timeout{};
-                    due_time_to_relative_filetime(&timeout, earliest_due_time, now);
-
-                    ::SetWaitableTimer(
-                        service.expiration_event.get(), 
-                        &timeout, 
-                        0, nullptr, 
-                        nullptr, FALSE);
-                }
-            }
+            // reset the waitable timer to the earliest due time in the timer queue, if any remain
+            last_set_waitable_timer = timer_thread_reset_waitable_timer(
+                service, last_set_waitable_timer, now);
         }
 
-        // handle ready awaiters
+        // finally, handle ready awaiters by posting 
+        // their readiness to the main timer service reactor
         while (ready_awaiters != nullptr)
         {
             auto* awaiter = ready_awaiters;
@@ -261,7 +278,53 @@ unsigned long __stdcall timer_service::timer_thread_main(void* arg)
         }
     }
 
+    // NOTE: we drop out of the timer thread immediately on a shutdown request;
+    // it is entirely possible that at this point there are coroutines that have
+    // scheduled themselves for resumption but the timeout has not yet become 
+    // due so they are currently suspended in the timer queue; there are various
+    // ways one might go about handling this situation; here, we simply mark each
+    // awaiter as "cancelled" and immediately post their resumption to the timer 
+    // service; this way, they will ultimately resume but will throw to denote 
+    // that the timeout that was expected was not satisfied
+    while (auto* awaiter = service.active_timers.pop_any())
+    {
+        awaiter->cancelled = true;
+        service.schedule_awaiter(awaiter->coro_handle);
+    }
+
     return EXIT_SUCCESS;
+}
+
+// Reset the waitable timer for the timer thread to earliest due time in the timer queue.
+timer_service::time_point_t timer_service::timer_thread_reset_waitable_timer(
+    timer_service& service, 
+    time_point_t   last_set_time,
+    time_point_t   now)
+{
+    if (!service.active_timers.is_empty())
+    {
+        auto const earliest_due_time = service.active_timers.earliest_due_time();
+        if (earliest_due_time != last_set_time)
+        {
+            LARGE_INTEGER timeout{};
+            due_time_to_relative_filetime(&timeout, earliest_due_time, now);
+
+            ::SetWaitableTimer(
+                service.expiration_event.get(), 
+                &timeout, 
+                0, nullptr, 
+                nullptr, FALSE);
+
+            return earliest_due_time;
+        }
+    }
+
+    return time_point_t::max();
+}
+
+bool timer_service::is_closed() const noexcept
+{
+    return (service_state.load(std::memory_order_relaxed) & CLOSED_FLAG) == 0;
 }
 
 bool timer_service::try_enter_service()
@@ -296,7 +359,8 @@ service_awaiter::service_awaiter(
     , due_time{due_time_}
     , coro_handle{nullptr}
     , next{nullptr}
-    , ref_count{2} {}
+    , ref_count{2} 
+    , cancelled{false} {}
 
 bool service_awaiter::await_ready()
 {
@@ -334,4 +398,10 @@ void service_awaiter::await_suspend(
     }
 }
 
-void service_awaiter::await_resume() {}
+void service_awaiter::await_resume() 
+{
+    if (cancelled)
+    {
+        throw timer_cancelled_error{};
+    }
+}

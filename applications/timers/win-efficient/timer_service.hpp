@@ -1,4 +1,5 @@
 // timer_service.hpp
+// An IO service that supports efficient management of awaitable timers.
 
 #ifndef TIMER_SERVICE_HPP
 #define TIMER_SERVICE_HPP
@@ -59,6 +60,8 @@ public:
 
     time_point_t earliest_due_time();
 
+    service_awaiter* pop_any();
+
     bool is_empty() const noexcept;
 
     static bool due_time_comparator(
@@ -100,7 +103,7 @@ public:
 
     explicit timer_service(unsigned int const max_threads);
 
-    ~timer_service();
+    ~timer_service() = default;
 
     // non-copyable
     timer_service(timer_service const&)            = delete;
@@ -128,9 +131,17 @@ private:
     static constexpr std::uint32_t const NEW_THREAD_INCREMENT = 2;
 
     void wake_timer_thread();
+
     void schedule_awaiter(stdcoro::coroutine_handle<> awaiter_handle);
 
     static unsigned long __stdcall timer_thread_main(void* arg);
+    
+    static time_point_t timer_thread_reset_waitable_timer(
+        timer_service& service, 
+        time_point_t   last_set_time,
+        time_point_t   now);
+
+    bool is_closed() const noexcept;
 
     bool try_enter_service();
     void leave_service();
@@ -164,6 +175,8 @@ struct service_awaiter
 
     std::atomic_size_t ref_count;
 
+    bool cancelled;
+
     service_awaiter(
         timer_service& service_, 
         time_point_t   due_time_);
@@ -174,5 +187,10 @@ struct service_awaiter
 
     void await_resume();
 };
+
+// ----------------------------------------------------------------------------
+// timer_cancelled_error
+
+struct timer_cancelled_error {};
 
 #endif // TIMER_SERVICE_HPP
