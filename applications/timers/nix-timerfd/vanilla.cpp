@@ -11,7 +11,7 @@
 #include <sys/timerfd.h>
 
 #include <libcoro/nix/unique_fd.hpp>
-#include <libcoro/nix/nix_system_error.hpp>
+#include <libcoro/nix/system_error.hpp>
 
 constexpr static auto const DEFAULT_N_EXPIRATIONS = 5ul;
 
@@ -39,7 +39,7 @@ void arm_timer(int timer_fd, Duration timeout)
     int const res = timerfd_settime(timer_fd, 0, &spec, nullptr);
     if (-1 == res)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 }
 
@@ -64,7 +64,7 @@ void reactor(
         int const n_events = epoll_wait(epoller, &ev, 1, -1);
         if (-1 == n_events)
         {
-            throw coro::nix_system_error{};
+            throw coro::nix::system_error{};
         }
 
         if (ev.events & EPOLLIN)
@@ -84,17 +84,17 @@ int main(int argc, char* argv[])
         : DEFAULT_N_EXPIRATIONS;
 
     // create the epoll instance
-    auto instance = coro::unique_fd{::epoll_create1(0)};
+    auto instance = coro::nix::unique_fd{::epoll_create1(0)};
     if (!instance)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 
     // create the timer
-    auto timer = coro::unique_fd{::timerfd_create(CLOCK_REALTIME, 0)};
+    auto timer = coro::nix::unique_fd{::timerfd_create(CLOCK_REALTIME, 0)};
     if (!timer)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
     
     // associate the timer with the epoll instance
@@ -106,7 +106,7 @@ int main(int argc, char* argv[])
     
     if (epoll_ctl(instance.get(), EPOLL_CTL_ADD, timer.get(), &ev) == -1)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 
     // arm the timer

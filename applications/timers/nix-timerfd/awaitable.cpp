@@ -11,7 +11,7 @@
 #include <stdcoro/coroutine.hpp>
 #include <libcoro/eager_task.hpp>
 #include <libcoro/nix/unique_fd.hpp>
-#include <libcoro/nix/nix_system_error.hpp>
+#include <libcoro/nix/system_error.hpp>
 
 #include "awaitable_timer.hpp"
 
@@ -28,7 +28,7 @@ void reactor(
         int const n_events = ::epoll_wait(ioc, &ev, 1, -1);
         if (-1 == n_events)
         {
-            throw coro::nix_system_error{};
+            throw coro::nix::system_error{};
         }
 
         if (ev.events & EPOLLIN)
@@ -63,10 +63,10 @@ int main(int argc, char* argv[])
         : DEFAULT_N_EXPIRATIONS;
 
     // create the epoll instance
-    auto instance = coro::unique_fd{::epoll_create1(0)};
+    auto instance = coro::nix::unique_fd{::epoll_create1(0)};
     if (!instance)
     {
-        throw coro::nix_system_error{};
+        throw coro::nix::system_error{};
     }
 
     // start the waiter task

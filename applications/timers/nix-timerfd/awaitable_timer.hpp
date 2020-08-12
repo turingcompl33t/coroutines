@@ -7,12 +7,13 @@
 
 #include <chrono>
 #include <utility>
+#include <stdcoro/coroutine.hpp>
 
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 
-#include <stdcoro/coroutine.hpp>
+#include <libcoro/nix/system_error.hpp>
 
 class awaitable_timer
 {
@@ -48,7 +49,7 @@ public:
 
         if (-1 == fd)
         {
-            throw coro::nix_system_error{};
+            throw coro::nix::system_error{};
         }
 
         struct epoll_event ev{};
@@ -58,7 +59,7 @@ public:
         int const res = ::epoll_ctl(ioc, EPOLL_CTL_ADD, fd, &ev);
         if (-1 == res)
         {
-            throw coro::nix_system_error{};
+            throw coro::nix::system_error{};
         }
 
         auto const sec_ = duration_cast<seconds>(timeout);
