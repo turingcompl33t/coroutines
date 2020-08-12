@@ -27,7 +27,7 @@ void register_timer(
 {
     using namespace std::chrono;
 
-    auto const ms = duration_cast<microseconds>(timeout);
+    auto const us = duration_cast<microseconds>(timeout);
     
     // NOTE: interestingly, the macro NOTE_MSECONDS
     // is not available on OSX despite its appearance in
@@ -45,9 +45,9 @@ void register_timer(
     struct kevent ev = {
         .ident  = ident,
         .filter = EVFILT_TIMER,
-        .flags  = EV_ADD | EV_ENABLE,
+        .flags  = EV_ADD,
         .fflags = NOTE_USECONDS,
-        .data   = ms.count(),
+        .data   = us.count(),
         .udata  = nullptr
     };
 
