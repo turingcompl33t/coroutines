@@ -1,12 +1,12 @@
 // io_context.hpp
 
-#ifndef CORO_IO_CONTEXT_HPP
-#define CORO_IO_CONTEXT_HPP
-
-#include "win32_error.hpp"
+#ifndef IO_CONTEXT_HPP
+#define IO_CONTEXT_HPP
 
 #include <thread>
 #include <windows.h>
+
+#include <libcoro/win/system_error.hpp>
 
 class io_context
 { 
@@ -29,14 +29,14 @@ public:
     {
         if (NULL == pool || NULL == cleanup_group)
         {
-            throw win32_error{};
+            throw coro::win::system_error{};
         }
 
         ::SetThreadpoolThreadMaximum(pool, concurrency);
         if (!::SetThreadpoolThreadMinimum(pool, concurrency))
         {
             // not enough resources
-            throw win32_error{};
+            throw coro::win::system_error{};
         }
 
         // initialize a new callback environment
@@ -63,6 +63,11 @@ public:
         return &environment;
     }
 
+    HANDLE const& shutdown_handle() const noexcept
+    {
+        return shutdown_event;
+    }
+
     void shutdown() const noexcept
     {
         ::SetEvent(shutdown_event);
@@ -84,11 +89,11 @@ private:
     }
 
     static void cleanup_callback(
-        void* obj_ctx, 
-        void* cleanup_ctx)
+        void*, 
+        void*)
     {
         // no-op
     }   
 };
 
-#endif // CORO_IO_CONTEXT_HPP
+#endif // IO_CONTEXT_HPP

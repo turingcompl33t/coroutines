@@ -1,14 +1,16 @@
 // awaitable_timer.hpp
 
-#ifndef CORO_AWAITABLE_TIMER_HPP
-#define CORO_AWAITABLE_TIMER_HPP
-
-#include "io_context.hpp"
+#ifndef AWAITABLE_TIMER_HPP
+#define AWAITABLE_TIMER_HPP
 
 #include <utility>
-#include <experimental/coroutine>
+#include <stdcoro/coroutine.hpp>
 
 #include <windows.h>
+
+#include <libcoro/win/system_error.hpp>
+
+#include "io_context.hpp"
 
 template <typename Duration>
 static void timeout_to_filetime(Duration duration, FILETIME* ft)
@@ -19,10 +21,10 @@ static void timeout_to_filetime(Duration duration, FILETIME* ft)
         std::chrono::nanoseconds>(duration);
 
     // filetime represented in 100 ns increments
-    auto const ns_incs = (ns.count() / 100);
+    auto const ticks = (ns.count() / 100);
 
     // lazy way to split the high and low words 
-    tmp.QuadPart = -1*ns_incs;
+    tmp.QuadPart = -(ticks);
 
     ft->dwLowDateTime  = tmp.LowPart;
     ft->dwHighDateTime = tmp.HighPart;
@@ -67,7 +69,7 @@ public:
 
         if (NULL == timer_obj)
         {
-            throw win32_error{};
+            throw coro::win::system_error{};
         }
 
         timer = timer_obj;
@@ -115,9 +117,9 @@ public:
 
     // Invoked by IO context thread on timer expiration.
     static void __stdcall on_timer_expiration(
-        PTP_CALLBACK_INSTANCE instance, 
-        void*                 ctx, 
-        PTP_TIMER             timer_obj)
+        PTP_CALLBACK_INSTANCE, 
+        void* ctx, 
+        PTP_TIMER)
     {
         // resume the awaiting coroutine
         auto& async_ctx = *reinterpret_cast<async_context*>(ctx);
@@ -163,4 +165,4 @@ timer_awaiter awaitable_timer::operator co_await()
     return timer_awaiter{*this};
 }
 
-#endif // CORO_AWAITABLE_TIMER_HPP
+#endif // AWAITABLE_TIMER_HPP

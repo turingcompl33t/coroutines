@@ -1,19 +1,19 @@
 // awaitable.cpp
-// cl /EHsc /nologo /std:c++latest /await awaitable.cpp
-
-#include "io_context.hpp"
-#include "win32_error.hpp"
-#include "eager_resumable.hpp"
-#include "awaitable_timer.hpp"
 
 #include <string>
 #include <chrono>
 #include <cstdlib>
 #include <experimental/coroutine>
 
+#include <libcoro/eager_task.hpp>
+#include <libcoro/win/system_error.hpp>
+
+#include "io_context.hpp"
+#include "awaitable_timer.hpp"
+
 constexpr static auto const DEFAULT_N_REPS = 5ul;
 
-eager_resumable start_timer(
+coro::eager_task<void> start_timer(
     io_context&         ioc, 
     unsigned long const n_reps)
 {
@@ -21,7 +21,7 @@ eager_resumable start_timer(
 
     awaitable_timer timer{ioc, 2s};
 
-    for (auto i = 0; i < n_reps; ++i)
+    for (auto i = 0ul; i < n_reps; ++i)
     {   
         co_await timer;
 
