@@ -114,12 +114,8 @@ namespace coro::win
         }
     };
 
-        // wdl::handle::null_handle_traits
-    // 
-    // Traits definition appropriate for raw Windows handles
-    // for which the return value on initialization failure 
-    // is a null value (i.e. NULL or nullptr)
-
+    // For raw Windows HANDLEs returned by functions
+    // that return NULL to indicate failure.
     struct null_handle_traits
     {
         using pointer = HANDLE;
@@ -135,14 +131,8 @@ namespace coro::win
         }
     };
 
-    using null_handle = unique_handle<null_handle_traits>;
-
-    // wdl::handle::invalid_handle_traits
-    //
-    // Traits definition appropriate for raw Windows handles
-    // for which the return value on initialization failure 
-    // is a Windows constant INVALID_HANDLE_VALUE
-
+    // For raw Windows HANDLEs returned by functions
+    // that return INVALID_HANDLE_VALUE to indicate failure.
     struct invalid_handle_traits
     {
         using pointer = HANDLE;
@@ -157,6 +147,26 @@ namespace coro::win
             ::CloseHandle(value);
         }
     };   
+
+    // For objects created by CreateThreadpoolTimer()
+    struct tp_timer_handle_traits
+    {
+        using pointer = PTP_TIMER;
+
+        constexpr static pointer invalid() noexcept
+        {
+            return nullptr;
+        }
+
+        static void close(pointer value) noexcept
+        {
+            ::CloseThreadpoolTimer(value);
+        }
+    };
+
+    using null_handle     = unique_handle<null_handle_traits>;
+    using invalid_handle  = unique_handle<invalid_handle_traits>;
+    using tp_timer_handle = unique_handle<tp_timer_handle_traits>;
 }
 
 #endif // CORO_WIN_UNIQUE_HANDLE_HPP

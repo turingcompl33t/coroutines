@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
 
     io_context ioc{1};
 
-    start_timer(ioc, n_reps);
+    auto t = start_timer(ioc, n_reps);
 
     ioc.run();
     ioc.wait_close();

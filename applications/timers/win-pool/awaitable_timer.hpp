@@ -9,8 +9,12 @@
 #include <windows.h>
 
 #include <libcoro/win/system_error.hpp>
+#include <libcoro/win/unique_handle.hpp>
 
 #include "io_context.hpp"
+
+// ----------------------------------------------------------------------------
+// Utility
 
 template <typename Duration>
 static void timeout_to_filetime(Duration duration, FILETIME* ft)
@@ -30,6 +34,9 @@ static void timeout_to_filetime(Duration duration, FILETIME* ft)
     ft->dwHighDateTime = tmp.HighPart;
 }
 
+// ----------------------------------------------------------------------------
+// awaitable_timer
+
 class timer_awaiter;
 
 class awaitable_timer
@@ -41,14 +48,14 @@ public:
     };
 
 private:
-    // The supporting IO context.
+    // The associated IO context.
     io_context& ioc;
 
-    // The timout for this timer as a filetime.
+    // The timout for this timer as a native filetime.
     FILETIME timeout;
 
-    // The associated timer object.
-    PTP_TIMER timer;
+    // The owned timer object.
+    coro::win::tp_timer_handle timer;
 
     // The context utilized in timer expiration callback.
     async_context async_ctx;
@@ -56,7 +63,7 @@ private:
 public:
     template <typename Duration>
     explicit awaitable_timer(io_context& ioc_, Duration timeout_)
-        : ioc{ioc_}, timeout{}, timer{nullptr}, async_ctx{}
+        : ioc{ioc_}, timeout{}, timer{}, async_ctx{}
     {
         // convert the specified timeout
         timeout_to_filetime(timeout_, &timeout);
@@ -72,16 +79,10 @@ public:
             throw coro::win::system_error{};
         }
 
-        timer = timer_obj;
+        timer.reset(timer_obj);
     }
 
-    ~awaitable_timer()
-    {
-        if (timer)
-        {
-            ::CloseThreadpoolTimer(timer);
-        }
-    }
+    ~awaitable_timer() = default;
 
     // non-copyable
     awaitable_timer(awaitable_timer const&)            = delete;
@@ -90,11 +91,9 @@ public:
     awaitable_timer(awaitable_timer&& at) 
         : ioc{at.ioc}
         , timeout{at.timeout}
-        , timer{at.timer}
+        , timer{std::move(at.timer)}
         , async_ctx{at.async_ctx}
-    {
-        at.timer = nullptr;
-    }
+    {}
 
     awaitable_timer& operator=(awaitable_timer&& at)
     {
@@ -104,10 +103,8 @@ public:
 
             ioc       = at.ioc;
             timeout   = at.timeout;
-            timer     = at.timer;
+            timer     = std::move(at.timer);
             async_ctx = at.async_ctx;
-
-            at.timer = nullptr;
         }
 
         return *this;
@@ -133,10 +130,13 @@ private:
     {
         if (timer)
         {
-            ::CloseThreadpoolTimer(timer);
+            ::CloseThreadpoolTimer(timer.release());
         }
     }
 };
+
+// ----------------------------------------------------------------------------
+// timer_awaiter
 
 class timer_awaiter
 {
@@ -154,7 +154,7 @@ public:
     void await_suspend(std::experimental::coroutine_handle<> awaiting_coro)
     {
         timer.async_ctx.awaiting_coro = awaiting_coro;
-        ::SetThreadpoolTimer(timer.timer, &timer.timeout, 0, 0);
+        ::SetThreadpoolTimer(timer.timer.get(), &timer.timeout, 0, 0);
     }
 
     void await_resume() {}
