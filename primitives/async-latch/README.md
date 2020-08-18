@@ -1,3 +1,0 @@
-## Implementing `async_latch`
-
- 

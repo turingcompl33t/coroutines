@@ -1,59 +1,29 @@
-// async-latch/driver.cpp
-
-#include <libcoro/task.hpp>
-#include <libcoro/task_queue.hpp>
-#include <libcoro/async_latch.hpp>
+// driver.cpp
 
 #include <cstdio>
 #include <cstdlib>
+#include <stdcoro/coroutine.hpp>
+
+#include <libcoro/eager_task.hpp>
+
+#include "async_latch.hpp"
 
 #define trace(s) fprintf(stdout, "[%s] %s\n", __func__, s)
 
-coro::task_queue tasks{};
-
-coro::task<void> waiter1(coro::async_latch& latch)
-{
-    trace("enter");
-
-    co_await latch;
-
-    trace("exit");
-
-    co_return;
-}
-
-coro::task<void> waiter2(coro::async_latch& latch)
-{
-    trace("enter");
-
-    co_await latch;
-
-    trace("exit");
-
-    co_return;
-}
-
-coro::task<void> orchestrator(coro::async_latch& latch)
+coro::eager_task<void> waiter(async_latch& latch)
 {
     trace("enter");
     
-    co_await waiter1(latch);
-    co_await waiter2(latch);
+    co_await latch;
 
     trace("exit");
-
-    co_return;
 }
 
 int main()
 {
-    coro::async_latch latch{1};
+    async_latch latch{1};
 
-    auto root = orchestrator(latch);
-
-    tasks.schedule(root.handle());
-    tasks.run_all();
-
+    auto t = waiter(latch);
     latch.count_down();
 
     return EXIT_SUCCESS;
