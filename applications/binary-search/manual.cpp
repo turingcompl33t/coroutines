@@ -1,5 +1,5 @@
-// driver.cpp
-// Benchmark driver.
+// manual.cpp
+// Manual benchmark driver.
 //
 // Adapated from original code by Gor Nishanov.
 // https://github.com/GorNishanov/await/tree/master/2018_CppCon

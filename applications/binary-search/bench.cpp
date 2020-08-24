@@ -17,8 +17,8 @@ constexpr static unsigned int const RNG_SEED = 1;
 constexpr static auto const N_LOOKUPS = 1024*1024;
 
 // the bounds for the size of the dataset (count of integer items)
-constexpr static auto const MIN_DATASET_SIZE = 200*1024;
-constexpr static auto const MAX_DATASET_SIZE = 256*1024*1024;
+constexpr static auto const MIN_DATASET_SIZE = 512 * (1 << 10);  // 512KB (fits in L2)
+constexpr static auto const MAX_DATASET_SIZE =  16 * (1 << 20);  // 16MB (exceeds L3)
 
 // the bounds for the number of streams for interleaved multi-lookup
 constexpr static auto const MIN_N_STREAMS = 1;
@@ -161,8 +161,8 @@ static void BM_coroutine(benchmark::State& state)
     }
 }
 
-BENCHMARK(BM_vanilla)->UseManualTime();
-BENCHMARK(BM_state_machine)->UseManualTime();
-BENCHMARK(BM_coroutine)->UseManualTime();
+BENCHMARK(BM_vanilla)->Range(MIN_DATASET_SIZE, MAX_DATASET_SIZE)->UseManualTime();
+BENCHMARK(BM_state_machine)->Ranges({{MIN_DATASET_SIZE, MAX_DATASET_SIZE}, {MIN_N_STREAMS, MAX_N_STREAMS}})->UseManualTime();
+BENCHMARK(BM_coroutine)->Ranges({{MIN_DATASET_SIZE, MAX_DATASET_SIZE}, {MIN_N_STREAMS, MAX_N_STREAMS}})->UseManualTime();
 
 BENCHMARK_MAIN();
