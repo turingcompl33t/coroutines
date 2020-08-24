@@ -5,8 +5,9 @@
             "intelliSenseMode": "gcc-x64",
             "includePath": [
                 "/usr/include/c++/10",
-                "${workspaceFolder}/stdcoro/include",
-                "${workspaceFolder}/libcoro/include"
+                "${workspaceFolder}/stdcoro/include/",
+                "${workspaceFolder}/libcoro/include/",
+                "${workspaceFolder}/deps/benchmark/include/"
             ],
             "compilerPath": "/usr/bin/g++",
             "compilerArgs": ["-fcoroutines"],
@@ -17,8 +18,9 @@
             "name": "Mac",
             "intelliSenseMode": "clang-x64",
             "includePath": [
-                "${workspaceFolder}/stdcoro/include",
-                "${workspaceFolder}/libcoro/include"
+                "${workspaceFolder}/stdcoro/include/",
+                "${workspaceFolder}/libcoro/include/",
+                "${workspaceFolder}/deps/benchmark/include/"
             ],
             "compilerPath": "/usr/bin/clang++",
             "compilerArgs": ["-fcoroutines-ts"],
@@ -34,8 +36,9 @@
                 "NOMINMAX"
             ],
             "includePath": [
-                "${workspaceFolder}/stdcoro/include",
-                "${workspaceFolder}/libcoro/include"
+                "${workspaceFolder}/stdcoro/include/",
+                "${workspaceFolder}/libcoro/include/",
+                "${workspaceFolder}/deps/benchmark/include/"
             ],
             "windowsSdkVersion": "10.0.18362.0",
             "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/Hostx64/x64/cl.exe",

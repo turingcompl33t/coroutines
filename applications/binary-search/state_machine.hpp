@@ -18,8 +18,8 @@ struct Frame
     int const* last;
     int const* middle;
 
-    size_t len;
-    size_t half;
+    std::size_t len;
+    std::size_t half;
 
     int val;
 
@@ -37,7 +37,7 @@ struct Frame
         first = first_;
         last  = last_;
 
-        len = last - first;
+        len = static_cast<std::size_t>(last - first);
 
         if (0 == len)
         {
@@ -103,18 +103,18 @@ bool state_machine_binary_search(
     return Frame::FOUND == f.state;
 }
 
-size_t state_machine_multi_lookup(
+std::size_t state_machine_multi_lookup(
     std::vector<int> const& dataset, 
     std::vector<int> const& lookups, 
-    size_t n_streams)
+    std::size_t const       n_streams)
 {
     std::vector<Frame> frames(n_streams);
 
-    size_t const N = n_streams - 1;
-    size_t i = N;
+    std::size_t const N = n_streams - 1;
+    std::size_t i = N;
 
     // the number of keys found amongst all lookups
-    size_t result = 0;
+    std::size_t result = 0;
 
     auto const beg = &dataset[0];
     auto const end = beg + dataset.size();

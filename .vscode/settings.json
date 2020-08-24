@@ -55,7 +55,8 @@
         "stop_token": "cpp",
         "streambuf": "cpp",
         "thread": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "bitset": "cpp"
     },
     "cmake.configureOnOpen": false
 }

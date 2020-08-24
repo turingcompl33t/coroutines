@@ -12,14 +12,16 @@
 template <typename T>
 struct rng
 {
-    std::mt19937_64 gen;
-    std::uniform_int_distribution<T> distro;
-    size_t count;
+    std::mt19937_64                  generator;
+    std::uniform_int_distribution<T> distribution;
 
-    rng(unsigned int seed, T from, T to, size_t count)
-        : distro{from, to}, count{count}
+    std::size_t const count;
+
+    rng(unsigned int seed, T from, T to, std::size_t const count_)
+        : distribution{from, to}
+        , count{count_}
     {
-        gen.seed(seed);
+        generator.seed(seed);
     }
 
     struct iterator
@@ -40,7 +42,7 @@ struct rng
 
         T operator*()
         {
-            return owner.distro(owner.gen);
+            return owner.distribution(owner.generator);
         }
     };
 

@@ -14,8 +14,8 @@
 #include "coro_infra.hpp"
 
 // hacky way to do this...
-static size_t found_count     = 0;
-static size_t not_found_count = 0;
+static std::size_t found_count     = 0;
+static std::size_t not_found_count = 0;
 
 template <typename Iter, typename Found, typename NotFound>
 root_task coro_binary_search(
@@ -63,10 +63,10 @@ static void on_not_found()
     not_found_count++;
 }
 
-long coro_multi_lookup(
+std::size_t coro_multi_lookup(
     std::vector<int> const& dataset,
     std::vector<int> const& lookups,
-    size_t n_streams)
+    std::size_t const       n_streams)
 {
     throttler t{n_streams};
 
