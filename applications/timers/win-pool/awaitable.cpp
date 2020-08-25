@@ -3,7 +3,7 @@
 #include <string>
 #include <chrono>
 #include <cstdlib>
-#include <experimental/coroutine>
+#include <stdcoro/coroutine.hpp>
 
 #include <libcoro/eager_task.hpp>
 #include <libcoro/win/system_error.hpp>
@@ -19,18 +19,16 @@ coro::eager_task<void> start_timer(
 {
     using namespace std::chrono_literals;
 
-    awaitable_timer timer{ioc, 2s};
+    awaitable_timer two_seconds{ioc, 2s};
 
     for (auto i = 0ul; i < n_reps; ++i)
     {   
-        co_await timer;
+        co_await two_seconds;
 
         puts("[+] timer fired");
     }
 
     ioc.shutdown();
-
-    co_return;
 }
 
 int main(int argc, char* argv[])

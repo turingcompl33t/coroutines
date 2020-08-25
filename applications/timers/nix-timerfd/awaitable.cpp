@@ -44,11 +44,11 @@ coro::eager_task<void> waiter(
 {
     using namespace std::chrono_literals;
 
-    awaitable_timer timer{ioc, 1s};
+    awaitable_timer two_seconds{ioc, 2s};
 
     for (auto count = 0ul; count < n_expirations; ++count)
     {
-        co_await timer;
+        co_await two_seconds;
 
         puts("[+] timer fired");
     }

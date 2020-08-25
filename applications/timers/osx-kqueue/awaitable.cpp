@@ -26,11 +26,11 @@ coro::eager_task<void> waiter(int ioc, unsigned long const n_reps)
     // have the timer derive its unique identifier from the IOC;
     // can't do that here because the IOC is just an FD 
 
-    awaitable_timer timer{ioc, 0, 3s};
+    awaitable_timer two_seconds{ioc, 0, 3s};
 
     for (auto i = 0ul; i < n_reps; ++i)
     {
-        co_await timer;
+        co_await two_seconds;
 
         puts("[+] timer fired");
     }

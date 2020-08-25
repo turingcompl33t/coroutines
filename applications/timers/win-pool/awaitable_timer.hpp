@@ -62,7 +62,7 @@ private:
 
 public:
     template <typename Duration>
-    explicit awaitable_timer(io_context& ioc_, Duration timeout_)
+    awaitable_timer(io_context& ioc_, Duration timeout_)
         : ioc{ioc_}, timeout{}, timer{}, async_ctx{}
     {
         // convert the specified timeout
