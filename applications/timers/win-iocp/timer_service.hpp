@@ -4,16 +4,34 @@
 #define TIMER_SERVICE_HPP
 
 #include "queue.hpp"
-#include "win32_error.hpp"
 #include "timer_request.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <memory>
 #include <cassert>
-#include <experimental/coroutine>
-
 #include <windows.h>
+#include <stdcoro/coroutine.hpp>
+
+#include <libcoro/win/system_error.hpp>
+
+template <typename Duration>
+static void timeout_to_filetime(Duration duration, FILETIME* ft)
+{   
+    ULARGE_INTEGER tmp{};
+
+    auto const ns = std::chrono::duration_cast<
+        std::chrono::nanoseconds>(duration);
+
+    // filetime represented in 100 ns increments
+    auto const ns_incs = (ns.count() / 100);
+
+    // lazy way to split the high and low words 
+    tmp.QuadPart = -1*ns_incs;
+
+    ft->dwLowDateTime  = tmp.LowPart;
+    ft->dwHighDateTime = tmp.HighPart;
+}
 
 // ----------------------------------------------------------------------------
 // timer_service
@@ -33,14 +51,16 @@ class timer_service
     // Queue of timer requests.
     queue<timer_request> requests;
 
-    // The state of the service.
-    std::atomic_bool closed;
-
     // The total number of threads in reactor loop.
-    mutable std::atomic_ulong n_active_reactors;
+    // Bit 0:    closed flag
+    // Bit 31-1: count of active reactors
+    mutable std::atomic<std::uint32_t> n_active_reactors;
 
     // The total number of in-flight timers.
-    mutable std::atomic_ulong n_inflight_timers;
+    mutable std::atomic<std::uint32_t> n_inflight_timers;
+
+    constexpr static std::uint32_t const CLOSED_FLAG           = 1;
+    constexpr static std::uint32_t const NEW_REACTOR_INCREMENT = 2;
 
 public:
     explicit timer_service(
@@ -49,12 +69,11 @@ public:
     , worker{::CreateThread(nullptr, 0, 
         process_requests, this, 0, nullptr)}
     , requests{} 
-    , closed{false}
     , n_active_reactors{0}
     {
         if (NULL == port || NULL == worker)
         {
-            throw win32_error{};
+            throw coro::win::system_error{};
         }
     }
 
@@ -110,10 +129,10 @@ public:
 
 private:
     // Increment the number of active threads within service reactor loop.
-    void add_active_reactor() const noexcept;
+    bool try_enter_reactor() const noexcept;
 
     // Increment the number of active threads within service reactor loop.
-    void remove_active_reactor() const noexcept;
+    void leave_reactor() const noexcept;
 
     // Increment the in-flight timer count.
     void add_inflight_timer() const noexcept;
@@ -149,11 +168,11 @@ struct timer_service::awaitable
     // A reference to the owning timer service.
     timer_service& service;
 
-    // The timer request.
-    std::unique_ptr<timer_request> request;
+    // The timeout for the associated timer, as a Win32 filetime.
+    FILETIME timeout;
 
-    // The handle to the awaiting coroutine.
-    std::experimental::coroutine_handle<> awaiting_coro;
+    // A user-provided handle to existing timer object.
+    HANDLE user_timer;
 
     // Constructor for owned timer objects.
     template <typename Duration>
@@ -162,10 +181,11 @@ struct timer_service::awaitable
         Duration       timeout_)
         : posted{false}
         , service{service_} 
-        , request{std::make_unique<timer_request>(
-            service.port, timeout_, resume_awaiting_coroutine, &awaiting_coro)}
-        , awaiting_coro{}
-    {}
+        , timeout{}
+        , user_timer{NULL}
+    {
+        timeout_to_filetime(timeout_, &timeout);
+    }
 
     // Constructor for non-owned timer objects.
     template <typename Duration>
@@ -175,32 +195,61 @@ struct timer_service::awaitable
         Duration       timeout_)
         : posted{false}
         , service{service_} 
-        , request{std::make_unique<timer_request>(
-            service.port, timer_, timeout_, resume_awaiting_coroutine, &awaiting_coro)}
-        , awaiting_coro{}
-    {}
+        , timeout{}
+        , user_timer{timer_}
+    {
+        timeout_to_filetime(timeout_, &timeout);
+    }
 
     bool await_ready()
     {
-        // deny the request if the service is closed
-        return service.closed.load(std::memory_order_release);
+        return false;
     }
 
-    void await_suspend(std::experimental::coroutine_handle<> awaiting_coro_)
+    bool await_suspend(stdcoro::coroutine_handle<> awaiting_coro)
     {
-        // store the handle to the awaiting coroutine
-        this->awaiting_coro = awaiting_coro_;
+        // NOTE: cool addition to MSVC with latest release
+        // I incorrectly specified the std::memory_order_release
+        // memory order for the load operation below while writing
+        // this program. Under VS 16.6, the program built and executed
+        // just fine despite the fact that this error rendered
+        // the program incorrect. Once I updated to VS 16.7, however,
+        // this invalid memory order triggered a debug assertion in
+        // the standard library, leading me right to the mistake.
+
+        auto const state = service.n_active_reactors.load(std::memory_order_acquire);
+        if ((state & CLOSED_FLAG) != 0)
+        {
+            // deny the request if shutdown has been requested
+            return false;
+        }
+
+        service.add_inflight_timer();
+        posted = true;
+
+        std::unique_ptr<timer_request> request{};
+        if (user_timer != NULL)
+        {
+            // create request with user-provided timer
+            request = std::make_unique<timer_request>(
+                service.port, timeout, user_timer, resume_awaiting_coroutine, awaiting_coro.address());
+        }
+        else
+        {
+            // create a request with a new timer object
+            request = std::make_unique<timer_request>(
+                service.port, timeout, resume_awaiting_coroutine, awaiting_coro.address());
+        }
 
         // submit the request to the timer service
         service.requests.push(request.release(), FALSE);
-        this->posted = true;
 
-        service.add_inflight_timer();
+        return true;
     }
 
     bool await_resume() 
     {
-        return this->posted;
+        return posted;
     }
 };
 
@@ -213,17 +262,21 @@ bool timer_service::post(
     Duration           timeout, 
     timer_expiration_f completion_handler, 
     void*              ctx)
-{
-    if (closed.load(std::memory_order_acquire))
+{   
+    auto const state = n_active_reactors.load(std::memory_order_acquire);
+    if ((state & CLOSED_FLAG) != 0)
     {
         return false;
     }
 
     add_inflight_timer();
+
+    FILETIME as_filetime{};
+    timeout_to_filetime(timeout, &as_filetime);
     
     // construct the timer request 
     auto req = std::make_unique<timer_request>(
-        port, timeout, completion_handler, ctx);
+        port, as_filetime, completion_handler, ctx);
 
     // post the request to the worker thread
     requests.push(req.release(), FALSE);
@@ -240,16 +293,21 @@ bool timer_service::post_with_handle(
     timer_expiration_f completion_handler, 
     void*              ctx)
 {
-    if (closed.load(std::memory_order_acquire))
+    auto const state = n_active_reactors.load(std::memory_order_acquire);
+    if ((state & CLOSED_FLAG) != 0)
     {
         return false;
     }
 
+
     add_inflight_timer();
+
+    FILETIME as_filetime{};
+    timeout_to_filetime(timeout, &as_filetime);
 
     // construct the timer request 
     auto req = std::make_unique<timer_request>(
-        port, timer, timeout, completion_handler, ctx);
+        port, as_filetime, timer, completion_handler, ctx);
 
     // post the request to the worker thread
     requests.push(req.release(), FALSE);
@@ -268,7 +326,7 @@ timer_service::awaitable timer_service::post_awaitable_with_handle(
     HANDLE   timer, 
     Duration timeout)
 {
-    return awaitable{*this, timer, timeout};
+    return awaitable{*this, timeout, timer};
 }
 
 // The timer service reactor.
@@ -278,19 +336,17 @@ void timer_service::run() const
     ULONG_PTR     key{};
     LPOVERLAPPED  pov{};
 
-    if (closed.load(std::memory_order_acquire))
+    if (!try_enter_reactor())
     {
         return;
     }
-
-    add_active_reactor();
 
     for (;;)
     {
         // wait indefinitely for timer completion
         if (!::GetQueuedCompletionStatus(port, &bytes_xfer, &key, &pov, INFINITE))
         {
-            throw win32_error{};
+            throw coro::win::system_error{};
         }
 
         if (SHUTDOWN_KEY == key)
@@ -305,7 +361,7 @@ void timer_service::run() const
         // NOTE: necessary to perform this operation prior to
         // invoking the completion handler to avoid the case 
         // where the completion handler invokes shutdown() on
-        // the timer service and creates a deadlock
+        // the timer service and introduces a deadlock
         remove_inflight_timer();
 
         // call the completion handler
@@ -313,13 +369,18 @@ void timer_service::run() const
 
     }  // request destroyed here
 
-    remove_active_reactor();
+    leave_reactor();
 }
 
 void timer_service::shutdown()
 {
     // prevent new requests from entering queue
-    closed.store(true, std::memory_order_release);
+    auto const state = n_active_reactors.fetch_or(CLOSED_FLAG);
+    if ((state & CLOSED_FLAG) != 0)
+    {
+        // shutdown request already submitted
+        return;
+    }
 
     // request cancellation of the worker thread
     ::QueueUserAPC(on_shutdown_request, worker, reinterpret_cast<ULONG_PTR>(this));
@@ -341,14 +402,26 @@ void timer_service::shutdown()
 // ----------------------------------------------------------------------------
 // timer_service: Internal
 
-void timer_service::add_active_reactor() const noexcept
+bool timer_service::try_enter_reactor() const noexcept
 {
-    n_active_reactors.fetch_add(1, std::memory_order_release);
+    auto state = n_active_reactors.load(std::memory_order_acquire);
+    do
+    {
+        if ((state & CLOSED_FLAG) != 0)
+        {
+            return false;
+        }
+    } while (n_active_reactors.compare_exchange_weak(
+        state, 
+        state + NEW_REACTOR_INCREMENT, 
+        std::memory_order_release));
+
+    return true;
 }
 
-void timer_service::remove_active_reactor() const noexcept
+void timer_service::leave_reactor() const noexcept
 {
-    n_active_reactors.fetch_sub(1, std::memory_order_release);
+    n_active_reactors.fetch_sub(NEW_REACTOR_INCREMENT, std::memory_order_release);
 }
 
 void timer_service::add_inflight_timer() const noexcept
@@ -365,8 +438,8 @@ void timer_service::remove_inflight_timer() const noexcept
 // of a timer submitted by a coroutine.
 void timer_service::resume_awaiting_coroutine(void* ctx)
 {
-    auto* awaiting_coro = static_cast<std::experimental::coroutine_handle<>*>(ctx);
-    awaiting_coro->resume();
+    auto awaiting_coro = stdcoro::coroutine_handle<>::from_address(ctx);
+    awaiting_coro.resume();
 }
 
 // The work loop for the service's internal worker thread.
@@ -395,8 +468,8 @@ unsigned long __stdcall timer_service::process_requests(void* ctx)
 // The callback function invoked via APC on timer expiration.
 void timer_service::on_timer_expiration(
     void* ctx, 
-    unsigned long, 
-    unsigned long)
+    unsigned long /* dwTimerLowValue  */, 
+    unsigned long /* dwTimerHighValue */)
 {
     // retrieve the timer request context
     auto* req = reinterpret_cast<timer_request*>(ctx);

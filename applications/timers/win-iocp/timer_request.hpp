@@ -3,35 +3,21 @@
 #ifndef TIMER_REQUEST_HPP
 #define TIMER_REQUEST_HPP
 
+#include <chrono>
 #include <windows.h>
 
 // The signature of the callback function supplied by 
 // application code that will be invoked upon timer expiration.
 using timer_expiration_f = void (*)(void*);
 
-template <typename Duration>
-static void timeout_to_filetime(Duration duration, FILETIME* ft)
-{   
-    ULARGE_INTEGER tmp{};
-
-    auto const ns = std::chrono::duration_cast<
-        std::chrono::nanoseconds>(duration);
-
-    // filetime represented in 100 ns increments
-    auto const ns_incs = (ns.count() / 100);
-
-    // lazy way to split the high and low words 
-    tmp.QuadPart = -1*ns_incs;
-
-    ft->dwLowDateTime  = tmp.LowPart;
-    ft->dwHighDateTime = tmp.HighPart;
-}
-
 // The format of a timer request submitted to the IO context.
 struct timer_request
 {
     // A (native) handle to the associated completion port.
     HANDLE port;
+
+    // The desired timeout, as a filetime.
+    FILETIME timeout;
 
     // The timer object created by call to CreateWaitableTimer().
     HANDLE timer_object;
@@ -45,43 +31,34 @@ struct timer_request
     // Is it safe to close the timer handle on request completion?
     bool owned_timer;
 
-    // The desired timeout, as a filetime.
-    FILETIME timeout;
-
     // Construct a new timer request with an owned timer object.
-    template <typename Duration>
     timer_request(
         HANDLE             port_,
-        Duration           timeout_,
+        FILETIME           timeout_,
         timer_expiration_f completion_handler_,
         void*              ctx_)
         : port{port_}
-        , timer_object{::CreateWaitableTimerA(nullptr, TRUE, nullptr)} 
+        , timeout{timeout_}
+        , timer_object{::CreateWaitableTimerA(nullptr, TRUE, nullptr)}
         , completion_handler{completion_handler_}
         , ctx{ctx_}
         , owned_timer{true}
-    {
-        // convert the requested timeout to relative filetime
-        timeout_to_filetime(timeout_, &timeout);
-    }
+    {}
 
     // Construct a new timer request with a non-owned timer object.
-    template <typename Duration>
     timer_request(
         HANDLE             port_,
+        FILETIME           timeout_,
         HANDLE             timer_object_,
-        Duration           timeout_,
         timer_expiration_f completion_handler_,
         void*              ctx_)
         : port{port_}
+        , timeout{timeout_}
         , timer_object{timer_object_}
         , completion_handler{completion_handler_}
         , ctx{ctx_}
         , owned_timer{false}
-    {
-        // convert the requested timeout to relative filetime
-        timeout_to_filetime(timeout_, &timeout);
-    }
+    {}
 
     ~timer_request()
     {

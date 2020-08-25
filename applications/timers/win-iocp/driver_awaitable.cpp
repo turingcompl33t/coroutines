@@ -1,17 +1,17 @@
-// driver2.cpp
-//
-// cl /EHsc /nologo /std:c++latest /W4 /await driver2.cpp
+// driver_awaitable.cpp
+// Using the timer service with coroutine integration.
 
 #include "timer_service.hpp"
-#include "eager_resumable.hpp"
 
 #include <chrono>
 #include <string>
 #include <cstdio>
 
+#include <libcoro/eager_task.hpp>
+
 constexpr static auto const DEFAULT_N_REPS = 5ul;
 
-eager_resumable wait_for_n_timers(
+coro::eager_task<void> wait_for_n_timers(
     timer_service&      service, 
     unsigned long const n_reps)
 {
@@ -24,9 +24,8 @@ eager_resumable wait_for_n_timers(
         puts("[+] timer fired");
     }
 
+    // request shutdown of the timer service once we have completed our work
     service.shutdown();
-
-    co_return;
 }
 
 int main(int argc, char* argv[])

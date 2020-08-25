@@ -1,13 +1,14 @@
 // queue.hpp
+// Dead-simple concurrent queue.
 
 #ifndef QUEUE_HPP
 #define QUEUE_HPP
 
-#include "win32_error.hpp"
-
 #include <queue>
 #include <optional>
 #include <windows.h>
+
+#include <libcoro/win/system_error.hpp>
 
 template <typename T>
 class queue
@@ -28,7 +29,7 @@ public:
     {
         if (NULL == lock || NULL == non_empty)
         {
-            throw win32_error{};
+            throw coro::win::system_error{};
         }
     }
 
@@ -38,8 +39,13 @@ public:
         ::CloseHandle(lock);
     }
 
+    // non-copyable
     queue(queue const&)            = delete;
     queue& operator=(queue const&) = delete;
+
+    // non-movable
+    queue(queue&&)            = delete;
+    queue& operator=(queue&&) = delete;
 
     void push(T* obj, BOOL alertable)
     {

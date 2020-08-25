@@ -1,6 +1,5 @@
-// driver1.cpp
-//
-// cl /EHsc /nologo /std:c++latest /W4 driver1.cpp
+// driver_vanilla.cpp
+// Using the timer service without coroutine integration.
 
 #include "timer_service.hpp"
 
@@ -44,6 +43,7 @@ void wait_for_n_timers(
 
     ::CloseHandle(event);
 
+    // request shutdown of the timer service once we have completed our work
     service.shutdown();
 }
 
@@ -54,12 +54,15 @@ int main(int argc, char* argv[])
         : DEFAULT_N_REPS;
 
     timer_service service{1};
-
+    
+    // launch an asynchronous worker to wait on system timers
     auto fut = std::async(
         std::launch::async, wait_for_n_timers, std::ref(service), n_reps);
 
+    // run the service until shutdown
     service.run();
 
+    // wait for our asynchronous operation to complete
     fut.wait();
 
     return EXIT_SUCCESS;

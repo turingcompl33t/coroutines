@@ -1,2 +1,0 @@
-del .\*.obj
-del .\*.exe
