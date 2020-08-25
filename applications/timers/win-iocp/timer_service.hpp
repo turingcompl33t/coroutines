@@ -299,7 +299,6 @@ bool timer_service::post_with_handle(
         return false;
     }
 
-
     add_inflight_timer();
 
     FILETIME as_filetime{};
