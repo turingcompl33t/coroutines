@@ -22,7 +22,7 @@ TEST_CASE("map supports insertion")
     REQUIRE(map.count() == 1);
 }
 
-TEST_CASE("map supports insertion and subsequent lookup")
+TEST_CASE("map supports insertion and subsequent synchonous lookup")
 {
     Map<int, int> map{};
     REQUIRE(map.count() == 0);
@@ -32,7 +32,7 @@ TEST_CASE("map supports insertion and subsequent lookup")
     REQUIRE(r1.successful());
     REQUIRE(map.count() == 1);
 
-    auto r2 = map.lookup(1);
+    auto r2 = map.sync_lookup(1);
 
     REQUIRE(static_cast<bool>(r2));
     REQUIRE(r2.get_key() == 1);
@@ -53,7 +53,19 @@ TEST_CASE("map correctly handles resize operations")
 
     for (auto i = 0; i < 5; ++i)
     {
-        auto const r = map.lookup(i);
+        auto const r = map.sync_lookup(i);
         REQUIRE(static_cast<bool>(r));
     }
+}
+
+TEST_CASE("map supports asynchronous lookup with coroutines")
+{
+    Map<int, int> map{};
+    REQUIRE(map.count() == 0);
+
+    auto const insertion = map.insert(1, 1);
+    REQUIRE(insertion.successful());
+
+    auto const lookup = sequential_lookup(map, 1);
+    REQUIRE(static_cast<bool>(lookup));
 }

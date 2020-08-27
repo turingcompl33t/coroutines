@@ -349,6 +349,16 @@ namespace coro
             return !coro_handle.done();
         }
 
+        value_type result()
+        {
+            if (!coro_handle)
+            {
+                throw std::runtime_error{"broken promise"};
+            }
+
+            return coro_handle.promise().result();
+        }
+
         stdcoro::coroutine_handle<promise_type> handle() const noexcept
         {
             return coro_handle;

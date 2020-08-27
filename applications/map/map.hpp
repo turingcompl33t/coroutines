@@ -4,9 +4,14 @@
 #ifndef MAP_HPP
 #define MAP_HPP
 
+#include <vector>
 #include <cstdlib>
 #include <functional>
 #include <stdcoro/coroutine.hpp>
+
+#include <libcoro/eager_task.hpp>
+
+#include "prefetch.hpp"
 
 // ----------------------------------------------------------------------------
 // Interface
@@ -26,9 +31,6 @@ class Map
     struct Entry;
     struct Bucket;
 
-    class  LookupKVResult;
-    class  InsertKVResult;
-
     // the current number of items in the table
     std::size_t n_items;
 
@@ -42,6 +44,9 @@ class Map
     Hasher hasher;
 
 public:
+    class LookupKVResult;
+    class InsertKVResult;
+
     Map();
 
     ~Map();
@@ -54,8 +59,11 @@ public:
     Map(Map&&)            = delete;
     Map& operator=(Map&&) = delete;
 
-    // lookup an item in the map by key 
-    auto lookup(KeyT const& key) -> LookupKVResult;
+    // lookup an item in the map by key; completes synchronously 
+    auto sync_lookup(KeyT const& key) -> LookupKVResult;
+
+    // lookup an item in the map by key; spawns a new coroutine
+    auto async_lookup(KeyT const& key) -> coro::eager_task<LookupKVResult>;
 
     // insert a new key / value pair into the map
     auto insert(KeyT const& key, ValueT value) -> InsertKVResult;
@@ -180,7 +188,7 @@ Map<KeyT, ValueT, Hasher>::~Map()
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::lookup(KeyT const& key) -> LookupKVResult
+auto Map<KeyT, ValueT, Hasher>::sync_lookup(KeyT const& key) -> LookupKVResult
 {
     auto const index = bucket_index_for_key(key);
 
@@ -211,6 +219,42 @@ auto Map<KeyT, ValueT, Hasher>::lookup(KeyT const& key) -> LookupKVResult
 
     // not found
     return LookupKVResult{};
+}
+
+template <typename KeyT, typename ValueT, typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::async_lookup(KeyT const& key) -> coro::eager_task<LookupKVResult>
+{
+    auto const index = bucket_index_for_key(key);
+
+    // assume that the bucket array itself is cached
+    // TODO: can we avoid this assumption?
+    auto& bucket = buckets[index];
+    if (0 == bucket.n_items)
+    {
+        // not found
+        co_return LookupKVResult{};
+    }
+
+    auto& entry = co_await prefetch(*bucket.first);
+    for (;;)
+    {
+        if (key == entry.key)
+        {
+            co_return LookupKVResult{entry.key, entry.value};
+        }
+
+        if (nullptr == entry.next)
+        {
+            // reached the end of the bucket chain
+            break;
+        }
+
+        // traverse the linked-list of entries for this bucket
+        entry = co_await prefetch(*(entry.next));
+    }
+
+    // not found
+    co_return LookupKVResult{};
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
@@ -268,6 +312,38 @@ template <typename KeyT, typename ValueT, typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::count() const -> std::size_t
 {
     return n_items;
+}
+
+// ----------------------------------------------------------------------------
+// Free Functions
+
+// perform a synchronous lookup using Map::lookup_async(); testing purposes only
+template <typename KeyT, typename ValueT>
+auto sequential_lookup(Map<KeyT, ValueT>& map, KeyT const& key) -> Map<KeyT, ValueT>::LookupKVResult
+{
+    // spawn the task and synchronously drive it to completion
+    auto task = map.async_lookup(key);
+    while (task.resume());
+    
+    return task.result();
+}
+
+// use Map::lookup_sync() to sequentially perform a lookup for each key in `keys`
+template <typename KeyT, typename ValueT, typename Hasher>
+auto sequential_multilookup(
+    Map<KeyT, ValueT, Hasher>& map, 
+    std::vector<KeyT const&>   keys) -> std::vector<typename Map<KeyT, ValueT, Hasher>::LookupKVResult>
+{
+    return {};
+}
+
+// use Map::lookup_async() to multiplex many coroutines for instruction stream interleaving
+template <typename KeyT, typename ValueT, typename Hasher>
+auto interleaved_multilookup(
+    Map<KeyT, ValueT, Hasher>& map, 
+    std::vector<KeyT const&>   keys) -> std::vector<typename Map<KeyT, ValueT, Hasher>::LookupKVResult>
+{
+    return {};
 }
 
 // ----------------------------------------------------------------------------
