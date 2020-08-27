@@ -38,3 +38,22 @@ TEST_CASE("map supports insertion and subsequent lookup")
     REQUIRE(r2.get_key() == 1);
     REQUIRE(r2.get_value() == 1);
 }
+
+TEST_CASE("map correctly handles resize operations")
+{
+    Map<int, int> map{};
+    REQUIRE(map.count() == 0);
+
+    // trigger a resize (dirty knowledge)
+    for (auto i = 0; i < 5; ++i)
+    {
+        auto const r = map.insert(i, i);
+        REQUIRE(r.successful());
+    }
+
+    for (auto i = 0; i < 5; ++i)
+    {
+        auto const r = map.lookup(i);
+        REQUIRE(static_cast<bool>(r));
+    }
+}

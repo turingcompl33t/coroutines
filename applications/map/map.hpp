@@ -18,7 +18,7 @@ template <
 class Map
 {
     // the initial number of buckets allocated to internal table
-    constexpr static auto const INIT_N_BUCKETS = 8ul;
+    constexpr static auto const INIT_CAPACITY = 8ul;
 
     // the target load factor for the map
     constexpr static auto const TARGET_LOAD_FACTOR = 0.5;
@@ -33,12 +33,12 @@ class Map
     std::size_t n_items;
 
     // the current number of buckets in the table
-    std::size_t n_buckets;
+    std::size_t capacity;
     
     // the array of buckets that composes the table
     Bucket* buckets;
 
-    // the key type hasher
+    // the hash functor used to hash keys
     Hasher hasher;
 
 public:
@@ -68,6 +68,8 @@ private:
 
     auto resize_required() const -> bool;
     auto perform_resize() -> void;
+
+    auto insert_into_bucket(Bucket& bucket, Entry* entry) -> void;
 };
 
 // ----------------------------------------------------------------------------
@@ -166,8 +168,8 @@ public:
 template <typename KeyT, typename ValueT, typename Hasher>
 Map<KeyT, ValueT, Hasher>::Map()
     : n_items{0}
-    , n_buckets{INIT_N_BUCKETS}
-    , buckets{new Bucket[INIT_N_BUCKETS]}
+    , capacity{INIT_CAPACITY}
+    , buckets{new Bucket[INIT_CAPACITY]}
     , hasher{}
 {}
 
@@ -277,20 +279,61 @@ auto Map<KeyT, ValueT, Hasher>::bucket_index_for_key(KeyT const& key) -> std::si
     auto const hash = hasher(key);
     // NOTE: we rely on the fact that the number of buckets
     // in the internal table is always a power of 2 here
-    return (hash & (n_buckets - 1));
+    return (hash & (capacity - 1));
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::resize_required() const -> bool
 {
     return (static_cast<double>(n_items) 
-        / static_cast<double>(n_buckets)) >= TARGET_LOAD_FACTOR; 
+        / static_cast<double>(capacity)) > TARGET_LOAD_FACTOR; 
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::perform_resize() -> void
+{   
+    // double the size of the table on resize
+    auto const new_capacity = (capacity << 1);
+    auto* new_buckets = new Bucket[new_capacity];
+
+    for (auto i = 0ul; i < capacity; ++i)
+    {
+        // iterate over each bucket in the current table
+        auto& bucket = buckets[i];
+        
+        auto* entry = bucket.first;
+        while (entry != nullptr)
+        {
+            auto const new_index = (hasher(entry->key) & (new_capacity - 1));
+            auto& new_bucket = new_buckets[new_index];
+
+            insert_into_bucket(new_bucket, entry);
+
+            entry = entry->next;
+        }
+    }
+
+    delete[] buckets;
+
+    buckets  = new_buckets;
+    capacity = new_capacity;
+}
+
+template <typename KeyT, typename ValueT, typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::insert_into_bucket(Bucket& bucket, Entry* entry) -> void
 {
-    return;
+    auto* current = bucket.first;
+    if (nullptr == current)
+    {
+        bucket.first = entry;
+        return;
+    }
+
+    // advance to the end of the bucket chain
+    for (; current->next != nullptr; current = current->next);
+    current->next = entry;
+
+    ++bucket.n_items;
 }
 
 #endif // MAP_HPP
