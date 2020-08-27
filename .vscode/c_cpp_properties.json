@@ -7,7 +7,8 @@
                 "/usr/include/c++/10",
                 "${workspaceFolder}/stdcoro/include/",
                 "${workspaceFolder}/libcoro/include/",
-                "${workspaceFolder}/deps/benchmark/include/"
+                "${workspaceFolder}/deps/benchmark/include/",
+                "${workspaceFolder}/deps/catch2/single_include/"
             ],
             "compilerPath": "/usr/bin/g++",
             "compilerArgs": ["-fcoroutines"],
@@ -20,7 +21,8 @@
             "includePath": [
                 "${workspaceFolder}/stdcoro/include/",
                 "${workspaceFolder}/libcoro/include/",
-                "${workspaceFolder}/deps/benchmark/include/"
+                "${workspaceFolder}/deps/benchmark/include/",
+                "${workspaceFolder}/deps/catch2/single_include/"
             ],
             "compilerPath": "/usr/bin/clang++",
             "compilerArgs": ["-fcoroutines-ts"],
@@ -38,7 +40,8 @@
             "includePath": [
                 "${workspaceFolder}/stdcoro/include/",
                 "${workspaceFolder}/libcoro/include/",
-                "${workspaceFolder}/deps/benchmark/include/"
+                "${workspaceFolder}/deps/benchmark/include/",
+                "${workspaceFolder}/deps/catch2/single_include/"
             ],
             "windowsSdkVersion": "10.0.18362.0",
             "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.24.28314/bin/Hostx64/x64/cl.exe",
