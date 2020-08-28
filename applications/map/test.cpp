@@ -22,7 +22,7 @@ TEST_CASE("map supports insertion")
     REQUIRE(map.count() == 1);
 }
 
-TEST_CASE("map supports insertion and subsequent synchonous lookup")
+TEST_CASE("map supports lookup")
 {
     Map<int, int> map{};
     REQUIRE(map.count() == 0);
@@ -37,6 +37,28 @@ TEST_CASE("map supports insertion and subsequent synchonous lookup")
     REQUIRE(static_cast<bool>(r2));
     REQUIRE(r2.get_key() == 1);
     REQUIRE(r2.get_value() == 1);
+}
+
+TEST_CASE("map supports removal")
+{
+    Map<int, int> map{};
+    REQUIRE(map.count() == 0);
+
+    auto r1 = map.insert(1, 1);
+
+    REQUIRE(static_cast<bool>(r1));
+    REQUIRE(map.count() == 1);
+
+    auto r2 = map.remove(1);
+
+    REQUIRE(static_cast<bool>(r2));
+    REQUIRE(map.count() == 0);
+
+    REQUIRE(r2.get_key() == 1);
+    REQUIRE(r2.get_value() == 1);
+
+    REQUIRE(r2.take_key() == 1);
+    REQUIRE(r2.take_value() == 1);
 }
 
 TEST_CASE("map correctly handles resize operations")

@@ -78,7 +78,7 @@ public:
     auto update(KeyT const& key, ValueT value) -> InsertKVResult;
 
     // remove a key / value pair from the map
-    auto remove(KeyT const& key, ValueT value) -> RemoveKVResult;
+    auto remove(KeyT const& key) -> RemoveKVResult;
 
     // query the current number of items in the map
     auto count() const -> std::size_t;
@@ -588,8 +588,7 @@ template <
     typename ValueT, 
     typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::remove(
-    KeyT const& key, 
-    ValueT      value) -> RemoveKVResult
+    KeyT const& key) -> RemoveKVResult
 {
     auto const index = bucket_index_for_key(key);
 
@@ -601,33 +600,35 @@ auto Map<KeyT, ValueT, Hasher>::remove(
     }
 
     Entry* prev = nullptr;
-    auto& entry = *bucket.first;
+    auto* entry = bucket.first;
     for (;;)
     {
-        if (key == entry.key)
+        if (key == entry->key)
         {
             // found a matching key; remove the key value pair
-            auto result = RemoveKVResult{std::move(entry.key), std::move(entry.value)};
+            auto result = RemoveKVResult{std::move(entry->key), std::move(entry->value)};
             if (prev != nullptr)
             {
-                prev->next = entry.next;
+                prev->next = entry->next;
             }
             else
             {
-                bucket.first = entry.next;
+                bucket.first = entry->next;
             }
             
             delete entry;
+            --n_items;
+
             return result;
         }
 
-        if (nullptr == entry.next)
+        if (nullptr == entry->next)
         {
             // reached the end of the bucket chain
             break;
         }
 
-        entry = *entry.next;
+        entry = entry->next;
     }
     
     // key not present
