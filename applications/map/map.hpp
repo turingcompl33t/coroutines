@@ -6,12 +6,10 @@
 
 #include <vector>
 #include <cstdlib>
+#include <optional>
 #include <functional>
 #include <stdcoro/coroutine.hpp>
 
-#include <libcoro/eager_task.hpp>
-
-#include "scheduler.hpp"
 #include "prefetch.hpp"
 #include "recycling_allocator.hpp"
 
@@ -32,6 +30,11 @@ class Map
 
     struct Entry;
     struct Bucket;
+    
+    template <typename Scheduler>
+    class Throttler;    
+
+    class LookupKVTask;
 
     // the current number of items in the table
     std::size_t n_items;
@@ -48,8 +51,7 @@ class Map
 public:
     class LookupKVResult;
     class InsertKVResult;
-
-    class LookupKVTask;
+    class RemoveKVResult;
 
     Map();
 
@@ -63,23 +65,44 @@ public:
     Map(Map&&)            = delete;
     Map& operator=(Map&&) = delete;
 
-    // lookup an item in the map by key; completes synchronously 
-    auto sync_lookup(KeyT const& key) -> LookupKVResult;
+    // lookup an item in the map by key
+    auto lookup(KeyT const& key) -> LookupKVResult;
 
-    // lookup an item in the map by key; spawns a new coroutine
-    template <typename OnFound, typename OnNotFound>
-    auto async_lookup(
-        KeyT const& key, 
-        OnFound     on_found, 
-        OnNotFound  on_not_found) -> LookupKVTask;
-
-    // insert a new key / value pair into the map
+    // insert a new key / value pair into the map;
+    // does not insert if key is already present
     auto insert(KeyT const& key, ValueT value) -> InsertKVResult;
+
+    // update the value associated with `key` in the map;
+    // if `key` is not present, key / value pair is inserted
+    auto update(KeyT const& key, ValueT value) -> InsertKVResult;
+
+    // remove a key / value pair from the map
+    auto remove(KeyT const& key, ValueT value) -> RemoveKVResult;
 
     // query the current number of items in the map
     auto count() const -> std::size_t;
 
+    auto sequential_multilookup(
+        std::vector<KeyT> const& keys) -> std::vector<LookupKVResult>
+
+    template <typename Scheduler>
+    auto interleaved_multilookup(
+        std::vector<KeyT> const& keys,
+        Scheduler const&         scheduler,
+        std::size_t const        n_streams) -> std::vector<LookupKVResult>
+
 private:
+    // spawn a lookup task that utilizes coroutines for ISI
+    template <
+        typename Scheduler, 
+        typename OnFound, 
+        typename OnNotFound>
+    auto lookup_task(
+        KeyT const&      key, 
+        Scheduler const& scheduler,
+        OnFound          on_found, 
+        OnNotFound       on_not_found) -> LookupKVTask;
+
     auto bucket_index_for_key(KeyT const& key) -> std::size_t;
 
     auto resize_required() const -> bool;
@@ -89,7 +112,7 @@ private:
 };
 
 // ----------------------------------------------------------------------------
-// Auxiliary Types
+// Auxiliary Types (Internal)
 
 template <typename KeyT, typename ValueT, typename Hasher>
 struct Map<KeyT, ValueT, Hasher>::Entry
@@ -119,74 +142,75 @@ struct Map<KeyT, ValueT, Hasher>::Bucket
         : first{nullptr}, n_items{0} {}
 };
 
-// type returned by a lookup operation
+// ----------------------------------------------------------------------------
+// Auxiliary Types (Internal, Coroutine-Specific)
+
 template <typename KeyT, typename ValueT, typename Hasher>
-class Map<KeyT, ValueT, Hasher>::LookupKVResult
+template <typename Scheduler>
+class Map<KeyT, ValueT, Hasher>::Throttler
 {
-    KeyT const* key;
-    ValueT*     value;
+    // the current number of remaining coroutines this instance may spawn
+    std::size_t limit;
+
+    // the scheduler used by the throttler instance
+    Scheduler const& scheduler;
 
 public:
-    LookupKVResult() 
-        : key{nullptr}
-        , value{nullptr} {}
+    template <typename Scheduler>
+    Throttler(
+        Scheduler const&  scheduler_, 
+        std::size_t const max_concurrent_tasks) 
+        : scheduler{scheduler_}
+        , limit{max_concurrent_tasks} {}
 
-    LookupKVResult(KeyT const& key_, ValueT& value_)
-        : key{&key_}, value{&value_} {}
-
-    KeyT const& get_key() const
+    ~Throttler()
     {
-        return *key;
+        run();
     }
 
-    ValueT& get_value() const
+    Throttler(Throttler const&)            = delete;
+    Throttler& operator=(Throttler const&) = delete;
+
+    Throttler(Throttler&&)            = delete;
+    Throttler& operator=(Throttler&&) = delete;
+
+    void spawn(Map<KeyT, ValueT, Hasher>::LookupKVTask task)
     {
-        return *value;
+        if (0 == limit)
+        {
+            scheduler.remove_next_task().resume();
+        }
+
+        // add the handle for the task to the scheduler queue
+        auto handle = task.set_owner(this);
+        scheduler.schedule(handle);
+        
+        // spawned a new active task, so decrement the limit
+        --limit;
     }
 
-    explicit operator bool() const
+    void run()
     {
-        return (key != nullptr);
+        scheduler.run();
+    }
+
+    void on_task_complete()
+    {
+        ++limit;
     }
 };
 
-// type returned by an insert operation
-template <typename KeyT, typename ValueT, typename Hasher>
-class Map<KeyT, ValueT, Hasher>::InsertKVResult
-{
-    KeyT const* key;
-    ValueT*     value;
-    bool const  inserted;
-
-public:
-    InsertKVResult(KeyT const& key_, ValueT& value_, bool const inserted_)
-        : key{&key_}, value{&value_}, inserted{inserted_} {}
-
-    bool successful() const
-    {
-        return inserted;
-    }
-
-    KeyT& get_key() const
-    {
-        return *key;
-    }
-
-    ValueT& get_value() const
-    {
-        return *value;
-    }
-};
-
-template <typename KeyT, typename ValueT, typename Hasher>
-class Throttler;
-
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 class Map<KeyT, ValueT, Hasher>::LookupKVTask
 {
 public:
     struct promise_type;
     using CoroHandle = stdcoro::coroutine_handle<promise_type>;
+
+    LookupKVTask() = delete;
 
     // destroy the coroutine if present
     ~LookupKVTask()
@@ -236,7 +260,10 @@ public:
             return std::suspend_never{};
         }
 
-        void return_void();
+        void return_void()
+        {
+            owner->on_task_complete();
+        }
 
         void unhandled_exception() noexcept
         {
@@ -266,24 +293,144 @@ private:
 };
 
 // ----------------------------------------------------------------------------
+// Auxiliary Types (Exported)
+
+// LookupKVResult
+// The type returned by Map::lookup() operations.
+template <typename KeyT, typename ValueT, typename Hasher>
+class Map<KeyT, ValueT, Hasher>::LookupKVResult
+{
+    KeyT const* key;
+    ValueT*     value;
+
+public:
+    LookupKVResult() 
+        : key{nullptr}
+        , value{nullptr} {}
+
+    LookupKVResult(KeyT const& key_, ValueT& value_)
+        : key{&key_}, value{&value_} {}
+
+    KeyT const& get_key() const
+    {
+        return *key;
+    }
+
+    ValueT& get_value() const
+    {
+        return *value;
+    }
+
+    explicit operator bool() const
+    {
+        return (key != nullptr);
+    }
+};
+
+// InsertKVResult
+// The type returned by Map::insert() and Map::update() operations.
+template <typename KeyT, typename ValueT, typename Hasher>
+class Map<KeyT, ValueT, Hasher>::InsertKVResult
+{
+    KeyT const* key;
+    ValueT*     value;
+    bool const  inserted;
+
+public:
+    InsertKVResult(KeyT const& key_, ValueT& value_, bool const inserted_)
+        : key{&key_}, value{&value_}, inserted{inserted_} {}
+
+    KeyT& get_key() const
+    {
+        return *key;
+    }
+
+    ValueT& get_value() const
+    {
+        return *value;
+    }
+
+    bool successful() const
+    {
+        return inserted;
+    }
+
+    explicit operator bool()
+    {
+        return inserted;
+    }
+};
+
+// RemoveKVResult
+// The type returned by Map::remove() operations.
+template <typename KeyT, typename ValueT, typename Hasher>
+class Map<KeyT, ValueT, Hasher>::RemoveKVResult
+{
+    std::optional<KeyT>   key;
+    std::optional<ValueT> value;
+
+public:
+    RemoveKVResult()
+        : key{}, value{} {}
+
+    RemoveKVResult(KeyT&& key_, ValueT&& value_)
+        : key{std::move(key_)}, value{std::move(value_)} {}
+
+    KeyT& get_key()
+    {
+        return *key;
+    }
+
+    ValueT& get_value()
+    {
+        return *value;
+    }
+
+    KeyT take_key()
+    {
+        return *std::move(key);
+    }
+
+    ValueT take_value()
+    {
+        return *std::move(value);
+    }
+
+    explicit operator bool()
+    {
+        return static_cast<bool>(key);
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Exported Definitions
 
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 Map<KeyT, ValueT, Hasher>::Map()
     : n_items{0}
     , capacity{INIT_CAPACITY}
     , buckets{new Bucket[INIT_CAPACITY]}
     , hasher{}
+    , frame_allocator{}
 {}
 
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 Map<KeyT, ValueT, Hasher>::~Map()
 {
     delete[] buckets;
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::sync_lookup(KeyT const& key) -> LookupKVResult
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::lookup(KeyT const& key) -> LookupKVResult
 {
     auto const index = bucket_index_for_key(key);
 
@@ -316,47 +463,10 @@ auto Map<KeyT, ValueT, Hasher>::sync_lookup(KeyT const& key) -> LookupKVResult
     return LookupKVResult{};
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
-template <typename OnFound, typename OnNotFound>
-auto Map<KeyT, ValueT, Hasher>::async_lookup(
-    KeyT const& key, 
-    OnFound     on_found, 
-    OnNotFound  on_not_found) -> LookupKVTask
-{
-    auto const index = bucket_index_for_key(key);
-
-    // assume that the bucket array itself is cached
-    // TODO: can we avoid this assumption?
-    auto& bucket = buckets[index];
-    if (0 == bucket.n_items)
-    {
-        // not found
-        co_return on_not_found();
-    }
-
-    auto& entry = co_await prefetch(*bucket.first);
-    for (;;)
-    {
-        if (key == entry.key)
-        {
-            co_return on_found(entry.key, entry.value);
-        }
-
-        if (nullptr == entry.next)
-        {
-            // reached the end of the bucket chain
-            break;
-        }
-
-        // traverse the linked-list of entries for this bucket
-        entry = co_await prefetch(*(entry.next));
-    }
-
-    // not found
-    co_return on_not_found();
-}
-
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::insert(KeyT const& key, ValueT value) -> InsertKVResult
 {
     if (resize_required())
@@ -407,64 +517,120 @@ auto Map<KeyT, ValueT, Hasher>::insert(KeyT const& key, ValueT value) -> InsertK
     return InsertKVResult{key, value, true};
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::count() const -> std::size_t
 {
     return n_items;
 }
 
-// ----------------------------------------------------------------------------
-// Things
-
-template <typename KeyT, typename ValueT, typename Hasher>
-class Throttler
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::sequential_multilookup(
+    std::vector<KeyT> const& keys) -> std::vector<typename Map<KeyT, ValueT, Hasher>::LookupKVResult>
 {
-    // the current number of remaining coroutines this instance may spawn
-    std::size_t limit;
+    using MapType    = Map<KeyT, ValueT, Hasher>;
+    using ResultType = typename MapType::LookupKVResult;
 
-public:
-    explicit Throttler(std::size_t const max_concurrent_tasks) 
-        : limit{max_concurrent_tasks} {}
+    std::vector<ResultType> results{};
+    results.reserve(keys.size());
 
-    ~Throttler()
+    for (auto const& key : keys)
     {
-        run();
+        results.push_back(map.lookup(key));
     }
 
-    void spawn(Map<KeyT, ValueT, Hasher>::LookupKVTask task)
-    {
-        if (0 == limit)
-        {
-            inline_scheduler.pop_front().resume();
-        }
+    return results;
+}
 
-        // add the handle for the task to the scheduler queue
-        auto handle = task.set_owner(this);
-        inline_scheduler.push_back(handle);
-        
-        // spawned a new active task, so decrement the limit
-        --limit;
-    }
-
-    void run()
-    {
-        inline_scheduler.run();
-    }
-
-    void on_task_complete()
-    {
-        ++limit;
-    }
-};
-
-template <typename KeyT, typename ValueT, typename Hasher>
-void Map<KeyT, ValueT, Hasher>::LookupKVTask::promise_type::return_void()
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+template <typename Scheduler>
+auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
+    std::vector<KeyT> const& keys,
+    Scheduler const&         scheduler,
+    std::size_t const        n_streams) -> std::vector<typename Map<KeyT, ValueT, Hasher>::LookupKVResult>
 {
-    owner->on_task_complete();
+    using MapType    = Map<KeyT, ValueT, Hasher>;
+    using ResultType = typename MapType::LookupKVResult;
+
+    // instantiate a throttler for this multilookup
+    MapType::Throttler throttler{scheduler, n_streams};
+
+    std::vector<ResultType> results{};
+    results.reserve(keys.size());
+
+    for (auto const& key : keys)
+    {
+        throttler.spawn(
+            map.async_lookup(
+                key,
+                [&results](KeyT const& k, ValueT& v){ results.push_back(ResultType{k, v}); },  // on_found()
+                [&results](){ results.push_back(ResultType{}); } ));                           // on_not_found()
+    }
+
+    // run until all lookup tasks complete
+    throttler.run();
+
+    return results;
 }
 
 // ----------------------------------------------------------------------------
 // Internal Definitions
+
+// NOTE: no, I am not happy about this either...
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+template < 
+    typename Scheduler, 
+    typename OnFound, 
+    typename OnNotFound>
+auto Map<KeyT, ValueT, Hasher>::lookup_task(
+    KeyT const&      key, 
+    Scheduler const& scheduler,
+    OnFound          on_found, 
+    OnNotFound       on_not_found) -> Map<KeyT, ValueT, Hasher>::LookupKVTask
+{
+    auto const index = bucket_index_for_key(key);
+
+    // assume that the bucket array itself is cached
+    // TODO: can we avoid this assumption?
+    auto& bucket = buckets[index];
+    if (0 == bucket.n_items)
+    {
+        // not found
+        co_return on_not_found();
+    }
+
+    auto& entry = co_await prefetch_and_schedule_on(*bucket.first, scheduler);
+    for (;;)
+    {
+        if (key == entry.key)
+        {
+            co_return on_found(entry.key, entry.value);
+        }
+
+        if (nullptr == entry.next)
+        {
+            // reached the end of the bucket chain
+            break;
+        }
+
+        // traverse the linked-list of entries for this bucket
+        entry = co_await prefetch_and_schedule_on(*(entry.next), scheduler);
+    }
+
+    // not found
+    co_return on_not_found();
+}
 
 template <typename KeyT, typename ValueT, typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::bucket_index_for_key(KeyT const& key) -> std::size_t

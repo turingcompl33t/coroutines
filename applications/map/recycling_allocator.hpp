@@ -5,6 +5,7 @@
 #define RECYCLING_ALLOCATOR_HPP
 
 #include <cstdlib>
+#include <stdexcept>
 
 struct RecyclingAllocator
 {
@@ -14,11 +15,11 @@ struct RecyclingAllocator
         std::size_t size;
     };
 
-    Header* root{nullptr};
+    Header* root;
 
-    std::size_t last_size_allocated = 0;
-    std::size_t total               = 0;
-    size_t alloc_count         = 0;
+public:
+    RecyclingAllocator() 
+        : root{nullptr} {}
 
     ~RecyclingAllocator()
     {
@@ -31,16 +32,30 @@ struct RecyclingAllocator
         }
     }
 
+    // non-copyable
+    RecyclingAllocator(RecyclingAllocator const&)            = delete;
+    RecyclingAllocator& operator=(RecyclingAllocator const&) = delete;
+
+    // non-movable
+    RecyclingAllocator(RecyclingAllocator&&)            = delete;
+    RecyclingAllocator& operator=(RecyclingAllocator&&) = delete;
+
     void* alloc(std::size_t n)
     {
         if (root != nullptr && root->size <= n)
         {
-            void* mem = root;
+            auto* mem = root;
             root = root->next;
             return mem;
         }
 
-        return ::malloc(n);
+        auto* ptr = ::malloc(n);
+        if (nullptr == ptr)
+        {
+            throw std::bad_alloc{};
+        }
+
+        return ptr;
     }
 
     void free(void* ptr, std::size_t n)
@@ -52,6 +67,9 @@ struct RecyclingAllocator
     }
 };
 
+// TODO: I hate having to define this globally with `inline` here,
+// but the mechanics of providing a custom allocator for coroutine frame
+// allocation are otherwise so messy its almost not worth the trouble.
 inline RecyclingAllocator inline_recycling_allocator;
 
 #endif // RECYCLING ALLOCATOR_HPP

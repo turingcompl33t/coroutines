@@ -1,50 +1,58 @@
-// scheduler.hpp
+// static_queue_scheduler.hpp
 
-#ifndef SCHEDULER_HPP
-#define SCHEDULER_HPP
+#ifndef STATIC_QUEUE_SCHEDULER_HPP
+#define STATIC_QUEUE_SCHEDULER_HPP
 
 #include <cstdlib>
 #include <stdcoro/coroutine.hpp>
 
-class Scheduler
+class StaticQueueScheduler
 {
-    constexpr static auto const MAX_TASKS{256};
+    constexpr static auto const MAX_TASKS{64};
     
     using CoroHandle = std::coroutine_handle<>;
 
-    std::size_t head{0};
-    std::size_t tail{0};
+    mutable std::size_t head;
+    mutable std::size_t tail;
 
-    CoroHandle buffer[MAX_TASKS];
+    mutable CoroHandle buffer[MAX_TASKS];
 
 public:
-    void push_back(CoroHandle handle)
+    StaticQueueScheduler()
+        : head{0}, tail{0} {}
+
+    // schedule a coroutine for later resumption
+    void schedule(CoroHandle handle) const
     {
         buffer[head] = handle;
         head = (head + 1) % MAX_TASKS;
     }
 
-    CoroHandle pop_front()
+    CoroHandle& get_next_task() const
+    {
+        return buffer[tail];
+    }
+
+    CoroHandle remove_next_task() const
     {
         auto result = buffer[tail];
         tail = (tail + 1) % MAX_TASKS;
         return result;
     }
 
-    auto try_pop_front()
+    void run() const
     {
-        return head != tail ? pop_front() : CoroHandle{};
-    }
-
-    void run()
-    {
-        while (auto handle = try_pop_front())
+        while (auto handle = try_remove_next_task())
         {
             handle.resume();
         }
     }
+
+private:
+    auto try_remove_next_task()
+    {
+        return head != tail ? remove_next_task() : CoroHandle{};
+    }
 };
 
-inline Scheduler inline_scheduler;
-
-#endif // SCHEDULER_HPP
+#endif // STATIC_QUEUE_SCHEDULER_HPP

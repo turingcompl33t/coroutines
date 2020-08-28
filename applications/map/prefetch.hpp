@@ -9,13 +9,14 @@
 
 #include <xmmintrin.h>
 
-template <typename T>
+template <typename T, typename Scheduler>
 struct prefetch_awaitable
 {
-    T& value;
+    T&               value;
+    Scheduler const& scheduler;
 
-    prefetch_awaitable(T& value_) 
-        : value{value_} {}
+    prefetch_awaitable(T& value_, Scheduler const& scheduler_) 
+        : value{value_}, scheduler{scheduler_} {}
 
     bool await_ready()
     {
@@ -32,14 +33,11 @@ struct prefetch_awaitable
         _mm_prefetch(reinterpret_cast<char const*>(
             std::addressof(value)), _MM_HINT_NTA);
 
-        // grab a reference to the task task scheduler
-        auto& scheduler = inline_scheduler;
-
         // schedule the coroutine for resumption
-        scheduler.push_back(awaiting_coroutine);
+        scheduler.schedule(awaiting_coroutine);
 
         // TODO: what if we don't have symmetric transfer?
-        return scheduler.pop_front();
+        return scheduler.remove_next_task();
     }
 
     T& await_resume()
@@ -49,10 +47,10 @@ struct prefetch_awaitable
     }
 };
 
-template <typename T>
-auto prefetch(T& value)
+template <typename T, typename Scheduler>
+auto prefetch_and_schedule_on(T& value, Scheduler const& scheduler)
 {
-    return prefetch_awaitable<T>{value};
+    return prefetch_awaitable<T>{value, scheduler};
 }
 
 #endif // PREFETCH_HPP
