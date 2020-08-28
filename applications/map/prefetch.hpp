@@ -17,8 +17,7 @@ struct prefetch_awaitable
     prefetch_awaitable(T& value_) 
         : value{value_} {}
 
-
-    auto await_ready() -> bool
+    bool await_ready()
     {
         // no way to query the system to determine if the address is
         // already present in cache, so just (pessimistically) assume
@@ -27,14 +26,23 @@ struct prefetch_awaitable
         return false;
     }
 
-    auto await_suspend(stdcoro::coroutine_handle<>) -> void
+    auto await_suspend(stdcoro::coroutine_handle<> awaiting_coroutine)
     {
         // prefetch the desired value
         _mm_prefetch(reinterpret_cast<char const*>(
             std::addressof(value)), _MM_HINT_NTA);
+
+        // grab a reference to the task task scheduler
+        auto& scheduler = inline_scheduler;
+
+        // schedule the coroutine for resumption
+        scheduler.push_back(awaiting_coroutine);
+
+        // TODO: what if we don't have symmetric transfer?
+        return scheduler.pop_front();
     }
 
-    auto await_resume() -> T&
+    T& await_resume()
     {
         // assume the value is ready now
         return value;

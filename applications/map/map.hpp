@@ -11,7 +11,9 @@
 
 #include <libcoro/eager_task.hpp>
 
+#include "scheduler.hpp"
 #include "prefetch.hpp"
+#include "recycling_allocator.hpp"
 
 // ----------------------------------------------------------------------------
 // Interface
@@ -47,6 +49,8 @@ public:
     class LookupKVResult;
     class InsertKVResult;
 
+    class LookupKVTask;
+
     Map();
 
     ~Map();
@@ -63,7 +67,11 @@ public:
     auto sync_lookup(KeyT const& key) -> LookupKVResult;
 
     // lookup an item in the map by key; spawns a new coroutine
-    auto async_lookup(KeyT const& key) -> coro::eager_task<LookupKVResult>;
+    template <typename OnFound, typename OnNotFound>
+    auto async_lookup(
+        KeyT const& key, 
+        OnFound     on_found, 
+        OnNotFound  on_not_found) -> LookupKVTask;
 
     // insert a new key / value pair into the map
     auto insert(KeyT const& key, ValueT value) -> InsertKVResult;
@@ -170,6 +178,93 @@ public:
     }
 };
 
+template <typename KeyT, typename ValueT, typename Hasher>
+class Throttler;
+
+template <typename KeyT, typename ValueT, typename Hasher>
+class Map<KeyT, ValueT, Hasher>::LookupKVTask
+{
+public:
+    struct promise_type;
+    using CoroHandle = stdcoro::coroutine_handle<promise_type>;
+
+    // destroy the coroutine if present
+    ~LookupKVTask()
+    {
+        if (handle)
+        {
+            handle.destroy();
+        }
+    }
+
+    LookupKVTask(LookupKVTask const&) = delete;
+
+    LookupKVTask(LookupKVTask&& rhs) 
+        : handle{rhs.handle}
+    {
+        rhs.handle = nullptr;
+    }
+
+    struct promise_type
+    {
+        Throttler<KeyT, ValueT, Hasher>* owner{nullptr};
+
+        // utilize the custom recycling allocator
+        void* operator new(std::size_t n)
+        {
+            return inline_recycling_allocator.alloc(n);
+        }
+
+        // utilize the custom recycling allocator
+        void operator delete(void* ptr, std::size_t n)
+        {
+            inline_recycling_allocator.free(ptr, n);
+        }
+
+        LookupKVTask get_return_object()
+        {
+            return LookupKVTask{*this};
+        }
+
+        auto initial_suspend()
+        {
+            return std::suspend_always{};
+        }
+
+        auto final_suspend()
+        {
+            return std::suspend_never{};
+        }
+
+        void return_void();
+
+        void unhandled_exception() noexcept
+        {
+            std::terminate();
+        }
+    };
+
+    // make the throttler the "owner" of this coroutine
+    auto set_owner(Throttler<KeyT, ValueT, Hasher>* owner)
+    {
+        auto result = handle;
+        
+        // modify the promise to point to the owning throttler
+        handle.promise().owner = owner;
+        
+        // reset our handle
+        handle = nullptr;
+
+        return result;
+    }
+
+private:
+    CoroHandle handle;
+
+    LookupKVTask(promise_type& p)
+        : handle{CoroHandle::from_promise(p)} {}
+};
+
 // ----------------------------------------------------------------------------
 // Exported Definitions
 
@@ -222,7 +317,11 @@ auto Map<KeyT, ValueT, Hasher>::sync_lookup(KeyT const& key) -> LookupKVResult
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::async_lookup(KeyT const& key) -> coro::eager_task<LookupKVResult>
+template <typename OnFound, typename OnNotFound>
+auto Map<KeyT, ValueT, Hasher>::async_lookup(
+    KeyT const& key, 
+    OnFound     on_found, 
+    OnNotFound  on_not_found) -> LookupKVTask
 {
     auto const index = bucket_index_for_key(key);
 
@@ -232,7 +331,7 @@ auto Map<KeyT, ValueT, Hasher>::async_lookup(KeyT const& key) -> coro::eager_tas
     if (0 == bucket.n_items)
     {
         // not found
-        co_return LookupKVResult{};
+        co_return on_not_found();
     }
 
     auto& entry = co_await prefetch(*bucket.first);
@@ -240,7 +339,7 @@ auto Map<KeyT, ValueT, Hasher>::async_lookup(KeyT const& key) -> coro::eager_tas
     {
         if (key == entry.key)
         {
-            co_return LookupKVResult{entry.key, entry.value};
+            co_return on_found(entry.key, entry.value);
         }
 
         if (nullptr == entry.next)
@@ -254,7 +353,7 @@ auto Map<KeyT, ValueT, Hasher>::async_lookup(KeyT const& key) -> coro::eager_tas
     }
 
     // not found
-    co_return LookupKVResult{};
+    co_return on_not_found();
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
@@ -315,35 +414,53 @@ auto Map<KeyT, ValueT, Hasher>::count() const -> std::size_t
 }
 
 // ----------------------------------------------------------------------------
-// Free Functions
+// Things
 
-// perform a synchronous lookup using Map::lookup_async(); testing purposes only
-template <typename KeyT, typename ValueT>
-auto sequential_lookup(Map<KeyT, ValueT>& map, KeyT const& key) -> Map<KeyT, ValueT>::LookupKVResult
-{
-    // spawn the task and synchronously drive it to completion
-    auto task = map.async_lookup(key);
-    while (task.resume());
-    
-    return task.result();
-}
-
-// use Map::lookup_sync() to sequentially perform a lookup for each key in `keys`
 template <typename KeyT, typename ValueT, typename Hasher>
-auto sequential_multilookup(
-    Map<KeyT, ValueT, Hasher>& map, 
-    std::vector<KeyT const&>   keys) -> std::vector<typename Map<KeyT, ValueT, Hasher>::LookupKVResult>
+class Throttler
 {
-    return {};
-}
+    // the current number of remaining coroutines this instance may spawn
+    std::size_t limit;
 
-// use Map::lookup_async() to multiplex many coroutines for instruction stream interleaving
+public:
+    explicit Throttler(std::size_t const max_concurrent_tasks) 
+        : limit{max_concurrent_tasks} {}
+
+    ~Throttler()
+    {
+        run();
+    }
+
+    void spawn(Map<KeyT, ValueT, Hasher>::LookupKVTask task)
+    {
+        if (0 == limit)
+        {
+            inline_scheduler.pop_front().resume();
+        }
+
+        // add the handle for the task to the scheduler queue
+        auto handle = task.set_owner(this);
+        inline_scheduler.push_back(handle);
+        
+        // spawned a new active task, so decrement the limit
+        --limit;
+    }
+
+    void run()
+    {
+        inline_scheduler.run();
+    }
+
+    void on_task_complete()
+    {
+        ++limit;
+    }
+};
+
 template <typename KeyT, typename ValueT, typename Hasher>
-auto interleaved_multilookup(
-    Map<KeyT, ValueT, Hasher>& map, 
-    std::vector<KeyT const&>   keys) -> std::vector<typename Map<KeyT, ValueT, Hasher>::LookupKVResult>
+void Map<KeyT, ValueT, Hasher>::LookupKVTask::promise_type::return_void()
 {
-    return {};
+    owner->on_task_complete();
 }
 
 // ----------------------------------------------------------------------------

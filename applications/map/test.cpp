@@ -57,15 +57,3 @@ TEST_CASE("map correctly handles resize operations")
         REQUIRE(static_cast<bool>(r));
     }
 }
-
-TEST_CASE("map supports asynchronous lookup with coroutines")
-{
-    Map<int, int> map{};
-    REQUIRE(map.count() == 0);
-
-    auto const insertion = map.insert(1, 1);
-    REQUIRE(insertion.successful());
-
-    auto const lookup = sequential_lookup(map, 1);
-    REQUIRE(static_cast<bool>(lookup));
-}
