@@ -352,7 +352,7 @@ public:
         , value{&value_}
         , inserted{inserted_} {}
 
-    KeyT& get_key() const
+    KeyT const& get_key() const
     {
         return *key;
     }
@@ -778,6 +778,7 @@ auto Map<KeyT, ValueT, Hasher>::perform_resize() -> void
     auto const new_capacity = (capacity << 1);
     auto* new_buckets = new Bucket[new_capacity];
 
+
     for (auto i = 0ul; i < capacity; ++i)
     {
         // iterate over each bucket in the current table
@@ -808,12 +809,13 @@ auto Map<KeyT, ValueT, Hasher>::insert_into_bucket(Bucket& bucket, Entry* entry)
     if (nullptr == current)
     {
         bucket.first = entry;
-        return;
     }
-
-    // advance to the end of the bucket chain
-    for (; current->next != nullptr; current = current->next);
-    current->next = entry;
+    else
+    {
+        // advance to the end of the bucket chain
+        for (; current->next != nullptr; current = current->next);
+        current->next = entry;
+    }
 
     ++bucket.n_items;
 }
