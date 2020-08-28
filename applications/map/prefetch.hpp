@@ -50,7 +50,7 @@ struct prefetch_awaitable
 template <typename T, typename Scheduler>
 auto prefetch_and_schedule_on(T& value, Scheduler const& scheduler)
 {
-    return prefetch_awaitable<T>{value, scheduler};
+    return prefetch_awaitable<T, Scheduler>{value, scheduler};
 }
 
 #endif // PREFETCH_HPP

@@ -18,7 +18,7 @@ TEST_CASE("map supports insertion")
 
     auto result = map.insert(1, 1);
     
-    REQUIRE(result.successful());
+    REQUIRE(static_cast<bool>(result));
     REQUIRE(map.count() == 1);
 }
 
@@ -29,10 +29,10 @@ TEST_CASE("map supports insertion and subsequent synchonous lookup")
 
     auto r1 = map.insert(1, 1);
 
-    REQUIRE(r1.successful());
+    REQUIRE(static_cast<bool>(r1));
     REQUIRE(map.count() == 1);
 
-    auto r2 = map.sync_lookup(1);
+    auto r2 = map.lookup(1);
 
     REQUIRE(static_cast<bool>(r2));
     REQUIRE(r2.get_key() == 1);
@@ -48,12 +48,12 @@ TEST_CASE("map correctly handles resize operations")
     for (auto i = 0; i < 5; ++i)
     {
         auto const r = map.insert(i, i);
-        REQUIRE(r.successful());
+        REQUIRE(static_cast<bool>(r));
     }
 
     for (auto i = 0; i < 5; ++i)
     {
-        auto const r = map.sync_lookup(i);
+        auto const r = map.lookup(i);
         REQUIRE(static_cast<bool>(r));
     }
 }
