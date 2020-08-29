@@ -25,8 +25,8 @@ class Map
     // the initial number of buckets allocated to internal table
     constexpr static auto const INIT_CAPACITY = 8ul;
 
-    // the target load factor for the map
-    constexpr static auto const TARGET_LOAD_FACTOR = 0.5;
+    // the maximum load factor for the map before resize
+    constexpr static auto const MAX_LOAD_FACTOR = 0.5;
 
     struct Entry;
     struct Bucket;
@@ -54,6 +54,8 @@ public:
     class InsertKVResult;
     class RemoveKVResult;
 
+    struct StatsResult;
+
     Map();
 
     ~Map();
@@ -80,9 +82,6 @@ public:
     // remove a key / value pair from the map
     auto remove(KeyT const& key) -> RemoveKVResult;
 
-    // query the current number of items in the map
-    auto count() const -> std::size_t;
-
     auto sequential_multilookup(
         std::vector<KeyT> const& keys) -> std::vector<LookupKVResult>;
 
@@ -91,6 +90,12 @@ public:
         std::vector<KeyT> const& keys,
         Scheduler const&         scheduler,
         std::size_t const        n_streams) -> std::vector<LookupKVResult>;
+
+    // query the current number of items in the map
+    auto count() const -> std::size_t;
+
+    // compute some instance-specific statistics and return to the caller
+    auto stats() const -> StatsResult;
 
 private:
     // spawn a lookup task that utilizes coroutines for ISI
@@ -106,8 +111,8 @@ private:
 
     auto bucket_index_for_key(KeyT const& key) -> std::size_t;
 
+    auto perform_resize_if_required() -> void;
     auto resize_required() const -> bool;
-    auto perform_resize() -> void;
 
     auto insert_into_bucket(Bucket& bucket, Entry* entry) -> void;
 };
@@ -370,7 +375,10 @@ public:
 
 // RemoveKVResult
 // The type returned by Map::remove() operations.
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 class Map<KeyT, ValueT, Hasher>::RemoveKVResult
 {
     std::optional<KeyT>   key;
@@ -407,6 +415,31 @@ public:
     {
         return static_cast<bool>(key);
     }
+};
+
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+struct Map<KeyT, ValueT, Hasher>::StatsResult
+{
+    // The current count of items in the map.
+    std::size_t count;
+
+    // The current capacity of the map (number of buckets).
+    std::size_t capacity;
+
+    // The current map load factor.
+    double  load_factor;
+
+    // The minimum length of a bucket chain in the map.
+    std::size_t min_bucket_chain_length;
+
+    // The maxumum length of a bucket chain in the map.
+    std::size_t max_bucket_chain_length;
+
+    // The average length of a bucket chain in the map.
+    std::size_t avg_bucket_chain_length;
 };
 
 // ----------------------------------------------------------------------------
@@ -477,11 +510,6 @@ auto Map<KeyT, ValueT, Hasher>::insert(
     KeyT const& key, 
     ValueT      value) -> InsertKVResult
 {
-    if (resize_required())
-    {
-        perform_resize();
-    }
-
     auto const index = bucket_index_for_key(key);
     
     auto& bucket = buckets[index];
@@ -492,6 +520,8 @@ auto Map<KeyT, ValueT, Hasher>::insert(
         bucket.first = new_entry;
         ++bucket.n_items;
         ++n_items;
+
+        perform_resize_if_required();
 
         return InsertKVResult{key, value, true};
     }
@@ -522,6 +552,8 @@ auto Map<KeyT, ValueT, Hasher>::insert(
     ++bucket.n_items;
     ++n_items;
 
+    perform_resize_if_required();
+
     return InsertKVResult{key, value, true};
 }
 
@@ -533,11 +565,6 @@ auto Map<KeyT, ValueT, Hasher>::update(
     KeyT const& key, 
     ValueT      value) -> InsertKVResult
 {
-    if (resize_required())
-    {
-        perform_resize();
-    }
-
     auto const index = bucket_index_for_key(key);
     
     auto& bucket = buckets[index];
@@ -548,6 +575,8 @@ auto Map<KeyT, ValueT, Hasher>::update(
         bucket.first = new_entry;
         ++bucket.n_items;
         ++n_items;
+
+        perform_resize_if_required();
 
         return InsertKVResult{key, value, true};
     }
@@ -579,6 +608,8 @@ auto Map<KeyT, ValueT, Hasher>::update(
     entry.next = new_entry;
     ++bucket.n_items;
     ++n_items;
+
+    perform_resize_if_required();
 
     return InsertKVResult{key, value, true};
 }
@@ -617,6 +648,7 @@ auto Map<KeyT, ValueT, Hasher>::remove(
             }
             
             delete entry;
+            --bucket.n_items;
             --n_items;
 
             return result;
@@ -633,15 +665,6 @@ auto Map<KeyT, ValueT, Hasher>::remove(
     
     // key not present
     return RemoveKVResult{};
-}
-
-template <
-    typename KeyT, 
-    typename ValueT, 
-    typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::count() const -> std::size_t
-{
-    return n_items;
 }
 
 template <
@@ -700,6 +723,44 @@ auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
 
     // run until all lookup tasks complete
     throttler.run();
+
+    return results;
+}
+
+
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::count() const -> std::size_t
+{
+    return n_items;
+}
+
+template <typename KeyT, typename ValueT, typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::stats() const -> StatsResult
+{
+    StatsResult results{};
+
+    results.count       = n_items;
+    results.capacity    = capacity;
+    results.load_factor 
+        = static_cast<double>(n_items) / static_cast<double>(capacity);
+
+    std::size_t min_length = std::numeric_limits<std::size_t>::max();
+    std::size_t max_length = 0;
+    std::size_t sum_length = 0;
+    for (auto i = 0ul; i < capacity; ++i)
+    {   
+        auto& bucket = buckets[i];
+        min_length = std::min(bucket.n_items, min_length);
+        max_length = std::max(bucket.n_items, max_length);
+        sum_length += bucket.n_items;
+    }
+
+    results.min_bucket_chain_length = min_length;
+    results.max_bucket_chain_length = max_length;
+    results.avg_bucket_chain_length = sum_length / capacity;
 
     return results;
 }
@@ -764,16 +825,16 @@ auto Map<KeyT, ValueT, Hasher>::bucket_index_for_key(KeyT const& key) -> std::si
     return (hash & (capacity - 1));
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::resize_required() const -> bool
-{
-    return (static_cast<double>(n_items) 
-        / static_cast<double>(capacity)) > TARGET_LOAD_FACTOR; 
-}
+
 
 template <typename KeyT, typename ValueT, typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::perform_resize() -> void
+auto Map<KeyT, ValueT, Hasher>::perform_resize_if_required() -> void
 {   
+    if (!resize_required()) [[likely]]
+    {
+        return;
+    }
+
     // double the size of the table on resize
     auto const new_capacity = (capacity << 1);
     auto* new_buckets = new Bucket[new_capacity];
@@ -800,6 +861,13 @@ auto Map<KeyT, ValueT, Hasher>::perform_resize() -> void
 
     buckets  = new_buckets;
     capacity = new_capacity;
+}
+
+template <typename KeyT, typename ValueT, typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::resize_required() const -> bool
+{
+    return (static_cast<double>(n_items) 
+        / static_cast<double>(capacity)) > MAX_LOAD_FACTOR; 
 }
 
 template <typename KeyT, typename ValueT, typename Hasher>
