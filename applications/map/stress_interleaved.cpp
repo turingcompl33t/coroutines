@@ -46,6 +46,15 @@ static void stress_interleaved_multilookup(
     
     assert(results.size() == n_lookups);
 
+    for (auto& lookup_result : results)
+    {
+        assert(static_cast<bool>(lookup_result));
+
+        auto const& k = lookup_result.get_key();
+        auto const& v = lookup_result.get_value();
+        assert(k == v);
+    }
+
     auto const stats = map.stats();
 
     std::cout << "[+] map statistics:\n"
