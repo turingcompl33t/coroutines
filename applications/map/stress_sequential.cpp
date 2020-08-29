@@ -24,7 +24,7 @@ static void stress_sequential_multilookup(
     std::size_t const n_inserts, 
     std::size_t const n_lookups)
 {
-    Map<int, int> map{};
+    Map<int, int> map{1 << 16};
 
     std::cout << "[+] inserting " << n_inserts << " key value pairs...\n";
     
@@ -59,6 +59,7 @@ static void stress_sequential_multilookup(
     std::cout << "[+] map statistics:\n"
         << "\titem count:       " << stats.count << '\n'
         << "\tcapacity:         " << stats.capacity << '\n'
+        << "\tmax capacity:     " << stats.max_capacity << '\n'
         << "\tload factor:      " << stats.load_factor << '\n'
         << "\tmin bucket chain: " << stats.min_bucket_chain_length << '\n'
         << "\tmax bucket chain: " << stats.max_bucket_chain_length << '\n'

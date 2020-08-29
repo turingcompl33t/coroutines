@@ -3,12 +3,35 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
+#include <memory>
+
 #include "map.hpp"
 
 TEST_CASE("map supports construction")
 {
-    Map<int, int> map{};
-    REQUIRE(map.count() == 0);
+    SECTION("default construction")
+    {
+        Map<int, int> map{};
+        REQUIRE(map.count() == 0);
+
+        auto stats = map.stats();
+        REQUIRE(stats.max_capacity == std::numeric_limits<std::size_t>::max());
+    }
+
+    SECTION("construction with explicit maximum capacity")
+    {
+        Map<int, int> map{32};
+        REQUIRE(map.count() == 0);
+
+        auto stats = map.stats();
+        REQUIRE(stats.max_capacity == 32);
+    }
+}
+
+TEST_CASE("map construction throws on invalid maximum capacity")
+{
+    std::unique_ptr<Map<int, int>> ptr{};
+    REQUIRE_THROWS_AS(ptr.reset(new Map<int, int>{0}), std::runtime_error);
 }
 
 TEST_CASE("map supports insertion")

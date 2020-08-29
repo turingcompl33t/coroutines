@@ -7,12 +7,18 @@
 #include <vector>
 #include <cstdlib>
 #include <optional>
+#include <stdexcept>
 #include <functional>
 #include <stdcoro/coroutine.hpp>
 
 #include "prefetch.hpp"
 #include "throttler.hpp"
 #include "recycling_allocator.hpp"
+
+// ----------------------------------------------------------------------------
+// Misc. Helper Declarations
+
+static std::size_t next_power_of_2(std::size_t n);
 
 // ----------------------------------------------------------------------------
 // Interface
@@ -23,10 +29,15 @@ template <
     typename Hasher = std::hash<KeyT>>
 class Map
 {
-    // the initial number of buckets allocated to internal table
-    constexpr static auto const INIT_CAPACITY = 8ul;
+    // The default initial number of buckets allocated to internal table.
+    // If a user-provided initial capacity exceeds this value, this value is used.
+    constexpr static auto const DEFAULT_INIT_CAPACITY = 16ul;
 
-    // the maximum load factor for the map before resize
+    // The default maximum capacity for the map.
+    constexpr static auto const DEFAULT_MAX_CAPACITY = std::numeric_limits<std::size_t>::max();
+
+    // The maximum load factor; once exceeded, a resize operation is 
+    // triggered, unless the maximum capacity has already been reached.
     constexpr static auto const MAX_LOAD_FACTOR = 0.5;
 
     struct Entry;
@@ -35,11 +46,15 @@ class Map
     template <typename Scheduler>
     class LookupKVTask;
 
-    // the current number of items in the table
+    // The current number of items in the map.
     std::size_t n_items;
 
-    // the current number of buckets in the table
+    // The current number of buckets in the table.
     std::size_t capacity;
+
+    // The maximum number of buckets beyond which further
+    // inserations will no longer trigger a resize.
+    std::size_t const max_capacity;
     
     // the array of buckets that composes the table
     Bucket* buckets;
@@ -55,6 +70,8 @@ public:
     struct StatsResult;
 
     Map();
+
+    explicit Map(std::size_t const max_capacity_);
 
     ~Map();
     
@@ -371,6 +388,9 @@ struct Map<KeyT, ValueT, Hasher>::StatsResult
     // The current capacity of the map (number of buckets).
     std::size_t capacity;
 
+    // The maximum capacity of the map (number of buckets).
+    std::size_t max_capacity; 
+
     // The current map load factor.
     double  load_factor;
 
@@ -391,12 +411,33 @@ template <
     typename KeyT, 
     typename ValueT, 
     typename Hasher>
-Map<KeyT, ValueT, Hasher>::Map()
+Map<KeyT, ValueT, Hasher>::Map() 
+    : Map{DEFAULT_MAX_CAPACITY} {}
+
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+Map<KeyT, ValueT, Hasher>::Map(
+    std::size_t const max_capacity_)
     : n_items{0}
-    , capacity{INIT_CAPACITY}
-    , buckets{new Bucket[INIT_CAPACITY]}
+    , capacity{0}
+    , max_capacity{max_capacity_}
+    , buckets{nullptr}
     , hasher{}
-{}
+{
+    if (0 == max_capacity)
+    {
+        throw std::runtime_error{"maximum capacity must be nonzero"};
+    }
+
+    // ensure the initial capacity is a power of 2
+    auto const init_capacity = 
+        next_power_of_2(std::min(DEFAULT_INIT_CAPACITY, max_capacity)) >> 1;
+
+    capacity = init_capacity;
+    buckets  = new Bucket[init_capacity];
+}
 
 template <
     typename KeyT, 
@@ -422,22 +463,22 @@ auto Map<KeyT, ValueT, Hasher>::lookup(KeyT const& key) -> LookupKVResult
         return LookupKVResult{};
     }
 
-    auto& entry = *bucket.first;
+    auto* entry = bucket.first;
     for (;;)
     {
-        if (key == entry.key)
+        if (key == entry->key)
         {
-            return LookupKVResult{entry.key, entry.value};
+            return LookupKVResult{entry->key, entry->value};
         }
 
-        if (nullptr == entry.next)
+        if (nullptr == entry->next)
         {
             // reached the end of the bucket chain
             break;
         }
 
         // traverse the linked-list of entries for this bucket
-        entry = *(entry.next);
+        entry = entry->next;
     }
 
     // not found
@@ -458,7 +499,7 @@ auto Map<KeyT, ValueT, Hasher>::insert(
     if (0 == bucket.n_items)
     {
         // empty bucket chain
-        Entry* new_entry = new Entry{key, value};
+        auto* new_entry = new Entry{key, value};
         bucket.first = new_entry;
         ++bucket.n_items;
         ++n_items;
@@ -468,29 +509,29 @@ auto Map<KeyT, ValueT, Hasher>::insert(
         return InsertKVResult{key, value, true};
     }
 
-    auto& entry = *bucket.first;
+    auto* entry = bucket.first;
     for (;;)
     {
-        if (key == entry.key)
+        if (key == entry->key)
         {
             // collision; do not insert
-            return InsertKVResult{entry.key, entry.value, false};
+            return InsertKVResult{entry->key, entry->value, false};
         }
 
-        if (nullptr == entry.next)
+        if (nullptr == entry->next)
         {
             // reached the end of the bucket chain
             break;
         }
 
-        entry = *entry.next;
+        entry = entry->next;
     }
 
     // reached the end of the entry chain without collision;
     // insert this key / value pair at end of current chain
 
     auto* new_entry = new Entry{key, value};
-    entry.next = new_entry;
+    entry->next = new_entry;
     ++bucket.n_items;
     ++n_items;
 
@@ -513,7 +554,7 @@ auto Map<KeyT, ValueT, Hasher>::update(
     if (0 == bucket.n_items)
     {
         // empty bucket chain
-        Entry* new_entry = new Entry{key, value};
+        auto* new_entry = new Entry{key, value};
         bucket.first = new_entry;
         ++bucket.n_items;
         ++n_items;
@@ -523,31 +564,31 @@ auto Map<KeyT, ValueT, Hasher>::update(
         return InsertKVResult{key, value, true};
     }
 
-    auto& entry = *bucket.first;
+    auto* entry = bucket.first;
     for (;;)
     {
-        if (key == entry.key)
+        if (key == entry->key)
         {
             // found a matching key; update the associated value
-            entry.value.~ValueT();
-            entry.value = value;
-            return InsertKVResult{entry.key, entry.value, true};
+            entry->value.~ValueT();
+            entry->value = value;
+            return InsertKVResult{entry->key, entry->value, true};
         }
 
-        if (nullptr == entry.next)
+        if (nullptr == entry->next)
         {
             // reached the end of the bucket chain
             break;
         }
 
-        entry = *entry.next;
+        entry = entry->next;
     }
 
     // reached the end of the entry chain without collision;
     // insert this key / value pair at end of current chain
 
     auto* new_entry = new Entry{key, value};
-    entry.next = new_entry;
+    entry->next = new_entry;
     ++bucket.n_items;
     ++n_items;
 
@@ -669,7 +710,6 @@ auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
     return results;
 }
 
-
 template <
     typename KeyT, 
     typename ValueT, 
@@ -679,13 +719,18 @@ auto Map<KeyT, ValueT, Hasher>::count() const -> std::size_t
     return n_items;
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::stats() const -> StatsResult
 {
     StatsResult results{};
 
-    results.count       = n_items;
-    results.capacity    = capacity;
+    results.count        = n_items;
+    results.capacity     = capacity;
+    results.max_capacity = max_capacity;
+
     results.load_factor 
         = static_cast<double>(n_items) / static_cast<double>(capacity);
 
@@ -758,7 +803,10 @@ auto Map<KeyT, ValueT, Hasher>::lookup_task(
     co_return on_not_found();
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::bucket_index_for_key(KeyT const& key) -> std::size_t
 {
     auto const hash = hasher(key);
@@ -767,9 +815,10 @@ auto Map<KeyT, ValueT, Hasher>::bucket_index_for_key(KeyT const& key) -> std::si
     return (hash & (capacity - 1));
 }
 
-
-
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::perform_resize_if_required() -> void
 {   
     if (!resize_required()) [[likely]]
@@ -781,7 +830,6 @@ auto Map<KeyT, ValueT, Hasher>::perform_resize_if_required() -> void
     auto const new_capacity = (capacity << 1);
     auto* new_buckets = new Bucket[new_capacity];
 
-
     for (auto i = 0ul; i < capacity; ++i)
     {
         // iterate over each bucket in the current table
@@ -790,12 +838,17 @@ auto Map<KeyT, ValueT, Hasher>::perform_resize_if_required() -> void
         auto* entry = bucket.first;
         while (entry != nullptr)
         {
+            // compute the new bucket index for this entry
             auto const new_index = (hasher(entry->key) & (new_capacity - 1));
+
+            // grab a reference to the new bucket for this entry
             auto& new_bucket = new_buckets[new_index];
 
+            // the insertion into the new bucket alters the `next` pointer for `entry`
+            auto* tmp_next = entry->next;
             insert_into_bucket(new_bucket, entry);
 
-            entry = entry->next;
+            entry = tmp_next;
         }
     }
 
@@ -805,16 +858,33 @@ auto Map<KeyT, ValueT, Hasher>::perform_resize_if_required() -> void
     capacity = new_capacity;
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
 auto Map<KeyT, ValueT, Hasher>::resize_required() const -> bool
 {
-    return (static_cast<double>(n_items) 
-        / static_cast<double>(capacity)) > MAX_LOAD_FACTOR; 
+    // QUESTION: which of these is likely to lead to more effective short-circuit? 
+
+    auto const load_factor_exceeded = (static_cast<double>(n_items) 
+        / static_cast<double>(capacity)) > MAX_LOAD_FACTOR;
+    
+    auto const capacity_available = (capacity << 1) <= max_capacity; 
+    
+    return load_factor_exceeded && capacity_available;
 }
 
-template <typename KeyT, typename ValueT, typename Hasher>
-auto Map<KeyT, ValueT, Hasher>::insert_into_bucket(Bucket& bucket, Entry* entry) -> void
+template <
+    typename KeyT, 
+    typename ValueT, 
+    typename Hasher>
+auto Map<KeyT, ValueT, Hasher>::insert_into_bucket(
+    Bucket& bucket, 
+    Entry*  entry) -> void
 {
+    // ensure the `next` pointer for the new entry is nulled-out
+    entry->next = nullptr;
+
     auto* current = bucket.first;
     if (nullptr == current)
     {
@@ -828,6 +898,30 @@ auto Map<KeyT, ValueT, Hasher>::insert_into_bucket(Bucket& bucket, Entry* entry)
     }
 
     ++bucket.n_items;
+}
+
+// ----------------------------------------------------------------------------
+// Misc. Helper Defintions
+
+static std::size_t next_power_of_2(std::size_t n)
+{
+    // https://stackoverflow.com/questions/466204/rounding-up-to-next-power-of-2
+
+    n--;
+
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    if constexpr (8 == sizeof(n))
+    {
+        n |= n >> 32;
+    }
+
+    n++;
+
+    return n;
 }
 
 #endif // MAP_HPP

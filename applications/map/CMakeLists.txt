@@ -17,6 +17,7 @@ target_link_libraries(test PRIVATE coro_config libcoro stdcoro Catch2 warnings t
 
 add_executable(stress_sequential "stress_sequential.cpp")
 target_link_libraries(stress_sequential PRIVATE coro_config libcoro stdcoro Catch2 warnings threads)
+target_compile_options(stress_sequential PRIVATE "-ggdb")
 
 add_executable(stress_interleaved "stress_interleaved.cpp")
 target_link_libraries(stress_interleaved PRIVATE coro_config libcoro stdcoro Catch2 warnings threads)

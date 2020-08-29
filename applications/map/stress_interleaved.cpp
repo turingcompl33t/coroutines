@@ -60,6 +60,7 @@ static void stress_interleaved_multilookup(
     std::cout << "[+] map statistics:\n"
         << "\titem count:       " << stats.count << '\n'
         << "\tcapacity:         " << stats.capacity << '\n'
+        << "\tmax capacity:     " << stats.max_capacity << '\n'
         << "\tload factor:      " << stats.load_factor << '\n'
         << "\tmin bucket chain: " << stats.min_bucket_chain_length << '\n'
         << "\tmax bucket chain: " << stats.max_bucket_chain_length << '\n'
