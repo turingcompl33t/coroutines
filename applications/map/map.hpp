@@ -102,10 +102,14 @@ public:
     // remove a key / value pair from the map
     auto remove(KeyT const& key) -> RemoveKVResult;
 
-    template <template<typename> typename RangeType>
+    template <
+        typename BeginInputIter, 
+        typename EndInputIter, 
+        typename OutIter>
     auto sequential_multilookup(
-        RangeType<KeyT>&             keys,
-        std::vector<LookupKVResult>& results) -> void;
+        BeginInputIter begin_keys,
+        EndInputIter   end_keys,
+        OutIter        begin_results) -> void;
 
     template <
         template<typename> typename RangeType, 
@@ -657,14 +661,19 @@ template <
     typename KeyT, 
     typename ValueT, 
     typename Hasher>
-template <template<typename> typename RangeType>
+template <
+    typename BeginInputIter, 
+    typename EndInputIter, 
+    typename OutIter>
 auto Map<KeyT, ValueT, Hasher>::sequential_multilookup(
-    RangeType<KeyT>&             keys,
-    std::vector<LookupKVResult>& results) -> void
+    BeginInputIter begin_keys,
+    EndInputIter   end_keys,
+    OutIter        begin_results) -> void
 {
-    for (auto const& key : keys)
+    for (auto iter = begin_keys; iter != end_keys; ++iter)
     {
-        results.push_back(lookup(key));
+        *begin_results = lookup(*iter);
+        ++begin_results;
     }
 }
 

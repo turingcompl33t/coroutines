@@ -48,7 +48,10 @@ static void stress_sequential_multilookup(
 
     // perform the lookup
     auto lookups = make_lookup_range(n_lookups);
-    map.sequential_multilookup(lookups, results);
+    map.sequential_multilookup(
+        lookups.begin(), 
+        lookups.end(), 
+        std::back_inserter(results));
     
     assert(results.size() == n_lookups);
 
