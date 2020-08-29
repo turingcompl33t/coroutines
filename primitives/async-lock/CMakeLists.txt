@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.17)
 
-project(coro-keywords CXX)
+project(async-lock CXX)
 
 include("../../cmake/coro_config.cmake")
 

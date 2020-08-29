@@ -5,26 +5,27 @@
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
+#include <stdcoro/coroutine.hpp>
+#include <libcoro/generator.hpp>
 
 #include "map.hpp"
 #include "scheduler.hpp"
 
-static std::vector<int> make_lookups(std::size_t const n)
+static coro::generator<int> 
+make_lookup_range(std::size_t const n)
 {
-    std::vector<int> lookups{};
-    lookups.reserve(n);
     for (auto i = 0ul; i < n; ++i)
     {
-        lookups.push_back(static_cast<int>(i));
+        co_yield static_cast<int>(i);
     }
-
-    return lookups;
 }
 
 static void stress_interleaved_multilookup(
     std::size_t const n_inserts, 
     std::size_t const n_lookups)
 {
+    using ResultType = typename Map<int, int>::LookupResultType;
+
     // map with explicit maximum capacity
     Map<int, int> map{1 << 16};
 
@@ -43,8 +44,12 @@ static void stress_interleaved_multilookup(
 
     std::cout << "[+] performing " << n_lookups << " lookups for inserted keys...\n";
 
-    auto lookups = make_lookups(n_lookups);
-    auto results = map.interleaved_multilookup(lookups, scheduler, 4); // 4 streams
+    // prepare an output vector for results
+    std::vector<ResultType> results{};
+    results.reserve(n_lookups);
+
+    auto lookups = make_lookup_range(n_lookups);
+    map.interleaved_multilookup(lookups, scheduler, 4, results); // 4 streams
     
     assert(results.size() == n_lookups);
 

@@ -3,6 +3,8 @@
 #ifndef THROTTLER_HPP
 #define THROTTLER_HPP
 
+#include <iostream>
+
 template <typename Scheduler>
 class Throttler
 {
@@ -37,7 +39,8 @@ public:
     {
         if (0 == limit)
         {
-            scheduler.remove_next_task().resume();
+            auto handle = scheduler.remove_next_task();
+            handle.resume();
         }
 
         // add the handle for the task to the scheduler queue

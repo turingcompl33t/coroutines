@@ -12,11 +12,11 @@
 template <typename T, typename Scheduler>
 struct prefetch_awaitable
 {
-    T&               value;
+    T*               address;
     Scheduler const& scheduler;
 
-    prefetch_awaitable(T& value_, Scheduler const& scheduler_) 
-        : value{value_}, scheduler{scheduler_} {}
+    prefetch_awaitable(T* address_, Scheduler const& scheduler_) 
+        : address{address_}, scheduler{scheduler_} {}
 
     bool await_ready()
     {
@@ -30,8 +30,7 @@ struct prefetch_awaitable
     auto await_suspend(stdcoro::coroutine_handle<> awaiting_coroutine)
     {
         // prefetch the desired value
-        _mm_prefetch(reinterpret_cast<char const*>(
-            std::addressof(value)), _MM_HINT_NTA);
+        _mm_prefetch(reinterpret_cast<char const*>(address), _MM_HINT_NTA);
 
         // schedule the coroutine for resumption
         scheduler.schedule(awaiting_coroutine);
@@ -40,17 +39,19 @@ struct prefetch_awaitable
         return scheduler.remove_next_task();
     }
 
-    T& await_resume()
+    T* await_resume()
     {
         // assume the value is ready now
-        return value;
+        return address;
     }
 };
 
 template <typename T, typename Scheduler>
-auto prefetch_and_schedule_on(T& value, Scheduler const& scheduler)
+auto prefetch_and_schedule_on(
+    T*               address, 
+    Scheduler const& scheduler)
 {
-    return prefetch_awaitable<T, Scheduler>{value, scheduler};
+    return prefetch_awaitable<T, Scheduler>{address, scheduler};
 }
 
 #endif // PREFETCH_HPP

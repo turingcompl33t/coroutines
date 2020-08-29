@@ -69,6 +69,11 @@ public:
 
     struct StatsResult;
 
+    using LookupResultType = LookupKVResult;
+    using InsertResultType = InsertKVResult;
+    using UpdateResultType = InsertKVResult;
+    using RemoveResultType = RemoveKVResult;
+
     Map();
 
     explicit Map(std::size_t const max_capacity_);
@@ -97,14 +102,19 @@ public:
     // remove a key / value pair from the map
     auto remove(KeyT const& key) -> RemoveKVResult;
 
+    template <template<typename> typename RangeType>
     auto sequential_multilookup(
-        std::vector<KeyT> const& keys) -> std::vector<LookupKVResult>;
+        RangeType<KeyT>&             keys,
+        std::vector<LookupKVResult>& results) -> void;
 
-    template <typename Scheduler>
+    template <
+        template<typename> typename RangeType, 
+        typename                    Scheduler>
     auto interleaved_multilookup(
-        std::vector<KeyT> const& keys,
-        Scheduler const&         scheduler,
-        std::size_t const        n_streams) -> std::vector<LookupKVResult>;
+        RangeType<KeyT>&             keys,
+        Scheduler const&             scheduler,
+        std::size_t const            n_streams,
+        std::vector<LookupKVResult>& results) -> void;
 
     // query the current number of items in the map
     auto count() const -> std::size_t;
@@ -119,7 +129,7 @@ private:
         typename OnFound, 
         typename OnNotFound>
     auto lookup_task(
-        KeyT const&      key, 
+        KeyT const       key, 
         Scheduler const& scheduler,
         OnFound          on_found, 
         OnNotFound       on_not_found) -> LookupKVTask<Scheduler>;
@@ -179,14 +189,7 @@ public:
 
     LookupKVTask() = delete;
 
-    // destroy the coroutine if present
-    ~LookupKVTask()
-    {
-        if (handle)
-        {
-            handle.destroy();
-        }
-    }
+    ~LookupKVTask() = default;
 
     LookupKVTask(LookupKVTask const&) = delete;
 
@@ -654,32 +657,29 @@ template <
     typename KeyT, 
     typename ValueT, 
     typename Hasher>
+template <template<typename> typename RangeType>
 auto Map<KeyT, ValueT, Hasher>::sequential_multilookup(
-    std::vector<KeyT> const& keys) -> std::vector<LookupKVResult>
+    RangeType<KeyT>&             keys,
+    std::vector<LookupKVResult>& results) -> void
 {
-    using MapType    = Map<KeyT, ValueT, Hasher>;
-    using ResultType = typename MapType::LookupKVResult;
-
-    std::vector<ResultType> results{};
-    results.reserve(keys.size());
-
     for (auto const& key : keys)
     {
         results.push_back(lookup(key));
     }
-
-    return results;
 }
 
 template <
     typename KeyT, 
     typename ValueT, 
     typename Hasher>
-template <typename Scheduler>
+template <
+    template<typename> typename RangeType, 
+    typename                    Scheduler>
 auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
-    std::vector<KeyT> const& keys,
-    Scheduler const&         scheduler,
-    std::size_t const        n_streams) -> std::vector<LookupKVResult>
+    RangeType<KeyT>&             keys,
+    Scheduler const&             scheduler,
+    std::size_t const            n_streams,
+    std::vector<LookupKVResult>& results) -> void
 {
     using MapType    = Map<KeyT, ValueT, Hasher>;
     using ResultType = typename MapType::LookupKVResult;
@@ -687,27 +687,22 @@ auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
     // instantiate a throttler for this multilookup
     Throttler throttler{scheduler, n_streams};
 
-    std::vector<ResultType> results{};
-    results.reserve(keys.size());
-
     for (auto const& key : keys)
     {
         throttler.spawn(
             lookup_task(
                 key,
                 scheduler,
-                [&results](KeyT const& k, ValueT& v) { 
+                [&results](KeyT const& k, ValueT& v) mutable { 
                     results.push_back(ResultType{k, v}); 
                 },
-                [&results]() { 
+                [&results]() mutable { 
                     results.push_back(ResultType{}); 
                 }));
     }
 
     // run until all lookup tasks complete
     throttler.run();
-
-    return results;
 }
 
 template <
@@ -765,7 +760,7 @@ template <
     typename OnFound, 
     typename OnNotFound>
 auto Map<KeyT, ValueT, Hasher>::lookup_task(
-    KeyT const&      key, 
+    KeyT const       key, 
     Scheduler const& scheduler,
     OnFound          on_found, 
     OnNotFound       on_not_found) -> LookupKVTask<Scheduler>
@@ -781,22 +776,22 @@ auto Map<KeyT, ValueT, Hasher>::lookup_task(
         co_return on_not_found();
     }
 
-    auto& entry = co_await prefetch_and_schedule_on(*bucket.first, scheduler);
+    auto* entry = co_await prefetch_and_schedule_on(bucket.first, scheduler);
     for (;;)
     {
-        if (key == entry.key)
+        if (key == entry->key)
         {
-            co_return on_found(entry.key, entry.value);
+            co_return on_found(entry->key, entry->value);
         }
 
-        if (nullptr == entry.next)
+        if (nullptr == entry->next)
         {
             // reached the end of the bucket chain
             break;
         }
 
         // traverse the linked-list of entries for this bucket
-        entry = co_await prefetch_and_schedule_on(*(entry.next), scheduler);
+        entry = co_await prefetch_and_schedule_on(entry->next, scheduler);
     }
 
     // not found

@@ -24,7 +24,7 @@ public:
     void schedule(CoroHandle handle) const
     {
         buffer[head] = handle;
-    head = (head + 1) % QueueDepth;
+        head = (head + 1) % QueueDepth;
     }
 
     CoroHandle& get_next_task() const
