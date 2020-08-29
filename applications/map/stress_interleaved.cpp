@@ -49,7 +49,11 @@ static void stress_interleaved_multilookup(
     results.reserve(n_lookups);
 
     auto lookups = make_lookup_range(n_lookups);
-    map.interleaved_multilookup(lookups, scheduler, 4, results); // 4 streams
+    map.interleaved_multilookup(
+        lookups.begin(), 
+        lookups.end(), 
+        std::back_inserter(results), 
+        scheduler, 4); // 4 streams
     
     assert(results.size() == n_lookups);
 

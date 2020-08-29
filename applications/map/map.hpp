@@ -105,20 +105,23 @@ public:
     template <
         typename BeginInputIter, 
         typename EndInputIter, 
-        typename OutIter>
+        typename OutputIter>
     auto sequential_multilookup(
         BeginInputIter begin_keys,
         EndInputIter   end_keys,
-        OutIter        begin_results) -> void;
+        OutputIter     begin_results) -> void;
 
     template <
-        template<typename> typename RangeType, 
-        typename                    Scheduler>
+        typename BeginInputIter, 
+        typename EndInputIter, 
+        typename OutputIter,
+        typename Scheduler>
     auto interleaved_multilookup(
-        RangeType<KeyT>&             keys,
-        Scheduler const&             scheduler,
-        std::size_t const            n_streams,
-        std::vector<LookupKVResult>& results) -> void;
+        BeginInputIter    begin_keys,
+        EndInputIter      end_keys,
+        OutputIter        begin_results,
+        Scheduler const&  scheduler,
+        std::size_t const n_streams) -> void;
 
     // query the current number of items in the map
     auto count() const -> std::size_t;
@@ -664,11 +667,11 @@ template <
 template <
     typename BeginInputIter, 
     typename EndInputIter, 
-    typename OutIter>
+    typename OutputIter>
 auto Map<KeyT, ValueT, Hasher>::sequential_multilookup(
     BeginInputIter begin_keys,
     EndInputIter   end_keys,
-    OutIter        begin_results) -> void
+    OutputIter     begin_results) -> void
 {
     for (auto iter = begin_keys; iter != end_keys; ++iter)
     {
@@ -682,13 +685,16 @@ template <
     typename ValueT, 
     typename Hasher>
 template <
-    template<typename> typename RangeType, 
-    typename                    Scheduler>
+    typename BeginInputIter, 
+    typename EndInputIter, 
+    typename OutputIter,
+    typename Scheduler>
 auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
-    RangeType<KeyT>&             keys,
-    Scheduler const&             scheduler,
-    std::size_t const            n_streams,
-    std::vector<LookupKVResult>& results) -> void
+    BeginInputIter    begin_keys,
+    EndInputIter      end_keys,
+    OutputIter        begin_results,
+    Scheduler const&  scheduler,
+    std::size_t const n_streams) -> void
 {
     using MapType    = Map<KeyT, ValueT, Hasher>;
     using ResultType = typename MapType::LookupKVResult;
@@ -696,17 +702,19 @@ auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
     // instantiate a throttler for this multilookup
     Throttler throttler{scheduler, n_streams};
 
-    for (auto const& key : keys)
+    for (auto key_iter = begin_keys; key_iter != end_keys; ++key_iter)
     {
         throttler.spawn(
             lookup_task(
-                key,
+                *key_iter,
                 scheduler,
-                [&results](KeyT const& k, ValueT& v) mutable { 
-                    results.push_back(ResultType{k, v}); 
+                [&begin_results](KeyT const& k, ValueT& v) mutable {
+                    *begin_results = ResultType{k, v};
+                    ++begin_results;
                 },
-                [&results]() mutable { 
-                    results.push_back(ResultType{}); 
+                [&begin_results]() mutable { 
+                    *begin_results = ResultType{};
+                    ++begin_results;
                 }));
     }
 
