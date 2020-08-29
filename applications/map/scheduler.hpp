@@ -6,16 +6,15 @@
 #include <cstdlib>
 #include <stdcoro/coroutine.hpp>
 
+template <std::size_t QueueDepth>
 class StaticQueueScheduler
-{
-    constexpr static auto const MAX_TASKS{64};
-    
+{    
     using CoroHandle = std::coroutine_handle<>;
 
     mutable std::size_t head;
     mutable std::size_t tail;
 
-    mutable CoroHandle buffer[MAX_TASKS];
+    mutable CoroHandle buffer[QueueDepth];
 
 public:
     StaticQueueScheduler()
@@ -25,7 +24,7 @@ public:
     void schedule(CoroHandle handle) const
     {
         buffer[head] = handle;
-        head = (head + 1) % MAX_TASKS;
+    head = (head + 1) % QueueDepth;
     }
 
     CoroHandle& get_next_task() const
@@ -36,7 +35,7 @@ public:
     CoroHandle remove_next_task() const
     {
         auto result = buffer[tail];
-        tail = (tail + 1) % MAX_TASKS;
+        tail = (tail + 1) % QueueDepth;
         return result;
     }
 
@@ -49,7 +48,7 @@ public:
     }
 
 private:
-    auto try_remove_next_task()
+    auto try_remove_next_task() const
     {
         return head != tail ? remove_next_task() : CoroHandle{};
     }

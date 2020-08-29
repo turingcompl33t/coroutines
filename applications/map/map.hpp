@@ -11,6 +11,7 @@
 #include <stdcoro/coroutine.hpp>
 
 #include "prefetch.hpp"
+#include "throttler.hpp"
 #include "recycling_allocator.hpp"
 
 // ----------------------------------------------------------------------------
@@ -30,9 +31,6 @@ class Map
 
     struct Entry;
     struct Bucket;
-    
-    template <typename Scheduler>
-    class Throttler;    
 
     template <typename Scheduler>
     class LookupKVTask;
@@ -150,62 +148,6 @@ struct Map<KeyT, ValueT, Hasher>::Bucket
 
 // ----------------------------------------------------------------------------
 // Auxiliary Types (Internal, Coroutine-Specific)
-
-template <typename KeyT, typename ValueT, typename Hasher>
-template <typename Scheduler>
-class Map<KeyT, ValueT, Hasher>::Throttler
-{
-    // the current number of remaining coroutines this instance may spawn
-    std::size_t limit;
-
-    // the scheduler used by the throttler instance
-    Scheduler const& scheduler;
-
-public:
-    Throttler(
-        Scheduler const&  scheduler_, 
-        std::size_t const max_concurrent_tasks) 
-        : scheduler{scheduler_}
-        , limit{max_concurrent_tasks} {}
-
-    ~Throttler()
-    {
-        run();
-    }
-
-    // non-copyable
-    Throttler(Throttler const&)            = delete;
-    Throttler& operator=(Throttler const&) = delete;
-
-    // non-movable
-    Throttler(Throttler&&)            = delete;
-    Throttler& operator=(Throttler&&) = delete;
-
-    void spawn(LookupKVTask<Scheduler> task)
-    {
-        if (0 == limit)
-        {
-            scheduler.remove_next_task().resume();
-        }
-
-        // add the handle for the task to the scheduler queue
-        auto handle = task.set_owner(this);
-        scheduler.schedule(handle);
-        
-        // spawned a new active task, so decrement the limit
-        --limit;
-    }
-
-    void run()
-    {
-        scheduler.run();
-    }
-
-    void on_task_complete()
-    {
-        ++limit;
-    }
-};
 
 template <
     typename KeyT, 
@@ -702,7 +644,7 @@ auto Map<KeyT, ValueT, Hasher>::interleaved_multilookup(
     using ResultType = typename MapType::LookupKVResult;
 
     // instantiate a throttler for this multilookup
-    MapType::Throttler throttler{scheduler, n_streams};
+    Throttler throttler{scheduler, n_streams};
 
     std::vector<ResultType> results{};
     results.reserve(keys.size());
