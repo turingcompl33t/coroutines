@@ -24,6 +24,7 @@ static void stress_sequential_multilookup(
     std::size_t const n_inserts, 
     std::size_t const n_lookups)
 {
+    // map with explicit maximum capacity
     Map<int, int> map{1 << 16};
 
     std::cout << "[+] inserting " << n_inserts << " key value pairs...\n";

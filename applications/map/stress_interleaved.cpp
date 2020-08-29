@@ -25,8 +25,10 @@ static void stress_interleaved_multilookup(
     std::size_t const n_inserts, 
     std::size_t const n_lookups)
 {
-    Map<int, int> map{};
+    // map with explicit maximum capacity
+    Map<int, int> map{1 << 16};
 
+    // task scheduler for multilookup
     StaticQueueScheduler<32> scheduler{};
 
     std::cout << "[+] inserting " << n_inserts << " key value pairs...\n";
