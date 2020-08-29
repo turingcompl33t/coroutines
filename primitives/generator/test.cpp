@@ -20,10 +20,28 @@ coro::generator<T> make_range(T begin, T end)
 // specifically, generator<T> relies on the fact that with ranges,
 // the type of the begin and end iterator for a range may differ
 
-template <typename RangeType, typename AccumulationType>
-AccumulationType accumulate(RangeType&& range, AccumulationType init)
+template <
+    typename BeginIter, 
+    typename EndIter, 
+    typename Accumulator>
+Accumulator accumulate_iter(
+    BeginIter   begin, 
+    EndIter     end, 
+    Accumulator init)
 {
-    AccumulationType accumulator{init};
+    Accumulator accumulator{init};
+    for (auto iter = begin; iter != end; ++iter)
+    {
+        accumulator += *iter;
+    }
+
+    return accumulator;
+}
+
+template <typename RangeType, typename Accumulator>
+Accumulator accumulate_range(RangeType&& range, Accumulator init)
+{
+    Accumulator accumulator{init};
     for (auto value : range)
     {
         accumulator += value;
@@ -32,9 +50,16 @@ AccumulationType accumulate(RangeType&& range, AccumulationType init)
     return accumulator;
 }
 
+TEST_CASE("generators allow us to construct lazy sequences that are STL-compatible")
+{
+    auto range     = make_range<int>(0, 5);
+    auto const sum = accumulate_iter(range.begin(), range.end(), 0);
+
+    REQUIRE(sum == 10);
+}
+
 TEST_CASE("generators allow us to construct lazy sequences that are range-compatible")
 {
-    // sum [0, 5)
-    auto const sum = accumulate(make_range<int>(0, 5), 0);
+    auto const sum = accumulate_range(make_range<int>(0, 5), 0);
     REQUIRE(sum == 10);
 }

@@ -18,10 +18,28 @@ coro::generator<T> make_range(T begin, T end)
 // specifically, generator<T> relies on the fact that with ranges,
 // the type of the begin and end iterator for a range may differ
 
-template <typename RangeType, typename AccumulationType>
-AccumulationType accumulate(RangeType&& range, AccumulationType init)
+template <
+    typename BeginIter, 
+    typename EndIter, 
+    typename Accumulator>
+Accumulator accumulate_iter(
+    BeginIter   begin, 
+    EndIter     end, 
+    Accumulator init)
 {
-    AccumulationType accumulator{init};
+    Accumulator accumulator{init};
+    for (auto iter = begin; iter != end; ++iter)
+    {
+        accumulator += *iter;
+    }
+
+    return accumulator;
+}
+
+template <typename RangeType, typename Accumulator>
+Accumulator accumulate_range(RangeType&& range, Accumulator init)
+{
+    Accumulator accumulator{init};
     for (auto value : range)
     {
         accumulator += value;
@@ -32,9 +50,13 @@ AccumulationType accumulate(RangeType&& range, AccumulationType init)
 
 int main()
 {
-    // sum [0, 5)
-    auto const sum = accumulate(make_range<int>(0, 5), 0);
-    printf("sum: %d\n", sum);
+    auto range = make_range<int>(0, 5);
+    auto const sum_iter = accumulate_iter(range.begin(), range.end(), 0);
+
+    auto const sum_range = accumulate_range(make_range<int>(0, 5), 0);
+
+    printf("sum iter:  %d\n", sum_iter);
+    printf("sum range: %d\n", sum_range);
 
     return EXIT_SUCCESS;
 }
