@@ -88,20 +88,24 @@ public:
     Map(Map&&)            = delete;
     Map& operator=(Map&&) = delete;
 
-    // lookup an item in the map by key
+    // Lookup an item in the map by key.
     auto lookup(KeyT const& key) -> LookupKVResult;
 
-    // insert a new key / value pair into the map;
-    // does not insert if key is already present
+    // Insert a new key / value pair into the map;
+    // does not insert if key is already present.
     auto insert(KeyT const& key, ValueT value) -> InsertKVResult;
 
-    // update the value associated with `key` in the map;
-    // if `key` is not present, key / value pair is inserted
+    // Update the value associated with `key` in the map;
+    // if `key` is not present, key / value pair is inserted.
     auto update(KeyT const& key, ValueT value) -> InsertKVResult;
 
-    // remove a key / value pair from the map
+    // Remove a key / value pair from the map.
     auto remove(KeyT const& key) -> RemoveKVResult;
 
+    // Perform a lookup operation for each key in the
+    // range [begin_keys, end_keys), inserting the result
+    // of each lookup operation into the range `begin_results`.
+    // Each lookup operation is performed sequentially.
     template <
         typename BeginInputIter, 
         typename EndInputIter, 
@@ -111,6 +115,12 @@ public:
         EndInputIter   end_keys,
         OutputIter     begin_results) -> void;
 
+    // Perform a lookup operation for each key in the
+    // range [begin_keys, end_keys), inserting the result
+    // of each lookup operation into the range `begin_results`.
+    // Lookup operations are spawned as independent coroutines
+    // such that their instruction streams may be interleaved
+    // in order to hide memory stall latency for large maps.
     template <
         typename BeginInputIter, 
         typename EndInputIter, 
@@ -123,14 +133,13 @@ public:
         Scheduler const&  scheduler,
         std::size_t const n_streams) -> void;
 
-    // query the current number of items in the map
+    // Query the current number of items in the map.
     auto count() const -> std::size_t;
 
-    // compute some instance-specific statistics and return to the caller
+    // Compute some instance-specific statistics and return to the caller.
     auto stats() const -> StatsResult;
 
 private:
-    // spawn a lookup task that utilizes coroutines for ISI
     template <
         typename Scheduler, 
         typename OnFound, 
@@ -152,6 +161,10 @@ private:
 // ----------------------------------------------------------------------------
 // Auxiliary Types (Internal)
 
+// An individual entry in the internal hashtable.
+//
+// The layout of this structure is important as it
+// determines the per-item overhead for the map.
 template <typename KeyT, typename ValueT, typename Hasher>
 struct Map<KeyT, ValueT, Hasher>::Entry
 {
@@ -167,6 +180,7 @@ struct Map<KeyT, ValueT, Hasher>::Entry
         : next{nullptr}, key{key_}, value{value_} {}
 };
 
+// The head of a bucket chain in the internal hashtable.
 template <typename KeyT, typename ValueT, typename Hasher>
 struct Map<KeyT, ValueT, Hasher>::Bucket
 {   
@@ -183,6 +197,8 @@ struct Map<KeyT, ValueT, Hasher>::Bucket
 // ----------------------------------------------------------------------------
 // Auxiliary Types (Internal, Coroutine-Specific)
 
+// The task type used to represent interleaved 
+// lookup operations in Map::interleaved_multilookup(). 
 template <
     typename KeyT, 
     typename ValueT, 
@@ -196,6 +212,8 @@ public:
 
     LookupKVTask() = delete;
 
+    // IMPT: not an RAII type; the throttler instance takes 
+    // ownership of the LookupKVTask immediately upon spawning it.
     ~LookupKVTask() = default;
 
     LookupKVTask(LookupKVTask const&) = delete;
@@ -273,7 +291,6 @@ private:
 // ----------------------------------------------------------------------------
 // Auxiliary Types (Exported)
 
-// LookupKVResult
 // The type returned by Map::lookup() operations.
 template <typename KeyT, typename ValueT, typename Hasher>
 class Map<KeyT, ValueT, Hasher>::LookupKVResult
@@ -305,7 +322,6 @@ public:
     }
 };
 
-// InsertKVResult
 // The type returned by Map::insert() and Map::update() operations.
 template <
     typename KeyT, 
@@ -342,7 +358,6 @@ public:
     }
 };
 
-// RemoveKVResult
 // The type returned by Map::remove() operations.
 template <
     typename KeyT, 
@@ -386,6 +401,7 @@ public:
     }
 };
 
+// The type returned by Map::stats() operations.
 template <
     typename KeyT, 
     typename ValueT, 
@@ -767,7 +783,6 @@ auto Map<KeyT, ValueT, Hasher>::stats() const -> StatsResult
 // ----------------------------------------------------------------------------
 // Internal Definitions
 
-// NOTE: no, I am not happy about this either...
 template <
     typename KeyT, 
     typename ValueT, 
