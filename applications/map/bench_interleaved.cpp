@@ -14,10 +14,16 @@
 // the maximum capacity of the map instance 
 constexpr static std::size_t const MAP_MAX_CAPACITY = 1 << 16;
 
+// the number of concurrent instruction streams used in multilookup;
+// after running this benchmark varying the number of streams, I saw 
+// very little difference between runs depedendent on the stream count, 
+// varying the number of streams used between 8 and 32
+constexpr static std::size_t const N_STREAMS = 10;
+
 // the upper and lower bound on the number of items in the map;
 // also the number of lookups that we perform in this test iteration
 constexpr static std::size_t const MIN_N_ITEMS = 1 << 16;  // ~65,000 keys
-constexpr static std::size_t const MAX_N_ITEMS = 1 << 24;  // ~16 million keys
+constexpr static std::size_t const MAX_N_ITEMS = 1 << 25;  // ~32 million keys
 
 // the upper and lower bound on the number of simultaneous
 // instruction streams to maintain for ISI with coroutines
@@ -41,7 +47,6 @@ static void BM_interleaved_multilookup(benchmark::State& state)
     using hr_clock = std::chrono::high_resolution_clock;
 
     auto const n_items   = static_cast<std::size_t>(state.range(0));
-    auto const n_streams = static_cast<std::size_t>(state.range(1));
 
     for (auto _ : state)
     {
@@ -70,7 +75,7 @@ static void BM_interleaved_multilookup(benchmark::State& state)
             lookup_range.end(), 
             output_iter,
             scheduler, 
-            n_streams);
+            N_STREAMS);
 
         auto const stop = hr_clock::now();
         auto const as_double = std::chrono::duration_cast<
@@ -85,7 +90,7 @@ static void BM_interleaved_multilookup(benchmark::State& state)
 
         char message[MSG_BUFFER_SIZE];
         ::snprintf(message, sizeof(message), 
-            "%zu items, %zu streams: %zu ns per lookup", n_items, n_streams, ns_per_lookup);
+            "%zu items: %zu ns per lookup", n_items, ns_per_lookup);
 
         state.SetLabel(message);
     }
@@ -93,7 +98,7 @@ static void BM_interleaved_multilookup(benchmark::State& state)
 
 BENCHMARK(BM_interleaved_multilookup)
     ->RangeMultiplier(2)
-    ->Ranges({{MIN_N_ITEMS, MAX_N_ITEMS}, {MIN_N_STREAMS, MAX_N_STREAMS}})
+    ->Range(MIN_N_ITEMS, MAX_N_ITEMS)
     ->UseManualTime();
 
 BENCHMARK_MAIN();

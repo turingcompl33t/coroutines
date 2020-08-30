@@ -11,6 +11,8 @@
 #include "map.hpp"
 #include "scheduler.hpp"
 
+constexpr static std::size_t const MAP_MAX_CAPACITY = 1 << 16;
+
 static coro::generator<int> 
 make_lookup_range(std::size_t const n)
 {
@@ -27,7 +29,7 @@ static void stress_interleaved_multilookup(
     using ResultType = typename Map<int, int>::LookupResultType;
 
     // map with explicit maximum capacity
-    Map<int, int> map{1 << 16};
+    Map<int, int> map{MAP_MAX_CAPACITY};
 
     // task scheduler for multilookup
     StaticQueueScheduler<32> scheduler{};
@@ -73,9 +75,9 @@ static void stress_interleaved_multilookup(
         << "\tcapacity:         " << stats.capacity << '\n'
         << "\tmax capacity:     " << stats.max_capacity << '\n'
         << "\tload factor:      " << stats.load_factor << '\n'
-        << "\tmin bucket chain: " << stats.min_bucket_chain_length << '\n'
-        << "\tmax bucket chain: " << stats.max_bucket_chain_length << '\n'
-        << "\tavg bucket chain: " << stats.avg_bucket_chain_length << '\n'
+        << "\tmin bucket depth: " << stats.min_bucket_depth << '\n'
+        << "\tmax bucket depth: " << stats.max_bucket_depth << '\n'
+        << "\tavg bucket depth: " << stats.avg_bucket_depth << '\n'
         << std::flush;
 }
 

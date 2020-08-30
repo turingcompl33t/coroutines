@@ -17,7 +17,7 @@ constexpr static std::size_t const MAP_MAX_CAPACITY = 1 << 16;
 // the upper and lower bound on the number of items in the map;
 // also the number of lookups that we perform in this test iteration
 constexpr static std::size_t const MIN_N_ITEMS = 1 << 16;  // ~65,000 keys
-constexpr static std::size_t const MAX_N_ITEMS = 1 << 24;  // ~16 million keys
+constexpr static std::size_t const MAX_N_ITEMS = 1 << 25;  // ~32 million keys
 
 // the size of the temporary buffer for generating messages
 constexpr static std::size_t MSG_BUFFER_SIZE = 64;

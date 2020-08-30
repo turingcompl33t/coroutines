@@ -1,5 +1,9 @@
 // map.hpp
 // A simple chaining hashmap implementation with coroutine support for bulk lookups.
+//
+// The API for this map is inspired by that described by Chandler Carruth
+// in his C++Now 2019 Lightning Talk "A clean and minimal map API":
+// https://www.youtube.com/watch?v=kye4aD-KvTU
 
 #ifndef MAP_HPP
 #define MAP_HPP
@@ -421,13 +425,13 @@ struct Map<KeyT, ValueT, Hasher>::StatsResult
     double  load_factor;
 
     // The minimum length of a bucket chain in the map.
-    std::size_t min_bucket_chain_length;
+    std::size_t min_bucket_depth;
 
     // The maxumum length of a bucket chain in the map.
-    std::size_t max_bucket_chain_length;
+    std::size_t max_bucket_depth;
 
     // The average length of a bucket chain in the map.
-    std::size_t avg_bucket_chain_length;
+    std::size_t avg_bucket_depth;
 };
 
 // ----------------------------------------------------------------------------
@@ -773,9 +777,9 @@ auto Map<KeyT, ValueT, Hasher>::stats() const -> StatsResult
         sum_length += bucket.n_items;
     }
 
-    results.min_bucket_chain_length = min_length;
-    results.max_bucket_chain_length = max_length;
-    results.avg_bucket_chain_length = sum_length / capacity;
+    results.min_bucket_depth = min_length;
+    results.max_bucket_depth = max_length;
+    results.avg_bucket_depth = sum_length / capacity;
 
     return results;
 }
